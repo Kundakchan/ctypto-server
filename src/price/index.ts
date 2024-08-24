@@ -49,7 +49,7 @@ export function watchPriceCoin({
   handler: WatchPriceCoinHandler;
 }) {
   setTimeout(() => {
-    handler(priceCoins);
     watchPriceCoin({ time, handler });
+    handler(priceCoins);
   }, time);
 }
