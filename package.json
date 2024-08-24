@@ -1,17 +1,19 @@
 {
   "name": "crypto-serve",
   "version": "1.0.0",
-  "main": "build/index.js",
+  "main": "index.ts",
   "scripts": {
-    "build": "tsc && node build/index.js"
+    "start": "tsx src/index.ts"
   },
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "bybit-api": "^3.10.13"
+    "bybit-api": "^3.10.13",
+    "dotenv": "^16.4.5"
   },
   "devDependencies": {
+    "tsx": "^4.17.0",
     "typescript": "^5.5.4"
   }
 }
