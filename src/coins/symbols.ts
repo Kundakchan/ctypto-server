@@ -1,4 +1,4 @@
-export default [
+export const symbols = [
   {
     symbol: "10000000AIDOGEUSDT",
     contractType: "LinearPerpetual",
@@ -14443,3 +14443,5 @@ export default [
     preListingInfo: null,
   },
 ] as const;
+
+export type Symbol = (typeof symbols)[number]["symbol"];
