@@ -1,12 +1,17 @@
 const socket = new WebSocket("wss://stream.bybit.com/v5/public/linear");
 import type { Symbol } from "../coins/symbols";
 
-export interface PriceCoins
-  extends Partial<Record<Symbol, { symbol: Symbol; price: number }>> {}
+export interface CoinData {
+  symbol: Symbol;
+  price: number;
+}
+
+export interface PriceCoins extends Partial<Record<Symbol, CoinData>> {}
+export type PriceType = "indexPrice" | "lastPrice";
 
 export const priceCoins: PriceCoins = {};
 
-export function subscribePriceCoin(symbols: Symbol[]) {
+export function subscribePriceCoin(symbols: Symbol[], priceType: PriceType) {
   const args = symbols.map((symbol) => `tickers.${symbol}`);
   const subscribeMessage = {
     op: "subscribe",
@@ -20,10 +25,10 @@ export function subscribePriceCoin(symbols: Symbol[]) {
   socket.onmessage = function (event) {
     const data = JSON.parse(event.data);
     const coin = data?.data;
-    if (coin?.indexPrice) {
+    if (coin?.[priceType]) {
       priceCoins[coin.symbol as Symbol] = {
         symbol: coin.symbol as Symbol,
-        price: Number(coin.indexPrice),
+        price: Number(coin[priceType]),
       };
     }
   };

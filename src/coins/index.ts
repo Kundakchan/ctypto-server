@@ -1,10 +1,5 @@
-const { RestClientV5 } = require("bybit-api");
+import { client } from "../client";
 import fs from "fs";
-
-const client = new RestClientV5({
-  key: process.env.API_KEY,
-  secret: process.env.API_SECRET,
-});
 
 function writeSymbolsToFile(symbols: string[]): void {
   const data = `export default ${JSON.stringify(symbols)} as const`;
