@@ -16,11 +16,10 @@ export const client: RestClientV5Type = new RestClientV5({
   demoTrading: true,
 });
 
-// export const ws: WebsocketClientType = new WebsocketClient({
-//   key: API_KEY,
-//   secret: API_SECRET,
-//   market: "v5", // Используйте v5 для новых функций
-//   demoTrading: true,
-//   testnet: false,
-//   wsUrl: "wss://stream-demo.bybit.com/v5/private",
-// });
+export const ws: WebsocketClientType = new WebsocketClient({
+  key: API_KEY,
+  secret: API_SECRET,
+  testnet: false,
+  demoTrading: true,
+  market: "v5",
+});
