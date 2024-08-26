@@ -4,6 +4,7 @@ import type { Symbol } from "../coins/symbols";
 export interface CoinData {
   symbol: Symbol;
   price: number;
+  original: Record<string, unknown>;
 }
 
 export interface PriceCoins extends Partial<Record<Symbol, CoinData>> {}
@@ -29,6 +30,7 @@ export function subscribePriceCoin(symbols: Symbol[], priceType: PriceType) {
       priceCoins[coin.symbol as Symbol] = {
         symbol: coin.symbol as Symbol,
         price: Number(coin[priceType]),
+        original: coin,
       };
     }
   };

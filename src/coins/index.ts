@@ -44,19 +44,18 @@ export function getBestCoins({
 }) {
   return coins
     .map((symbol) => {
-      const oldPrice = price["old"][symbol]?.price;
-      const newPrice = price["new"][symbol]?.price;
+      const oldPrice = price["old"][symbol]?.price ?? 0;
+      const newPrice = price["new"][symbol]?.price ?? 0;
 
       const changes =
-        oldPrice && newPrice
-          ? calculatePriceChange({ oldPrice, newPrice })
-          : null;
+        oldPrice && newPrice ? calculatePriceChange({ oldPrice, newPrice }) : 0;
 
       return {
         symbol,
         changes,
         url: `https://www.bybit.com/trade/usdt/${symbol}`,
         price: newPrice,
+        original: price["new"][symbol]?.original,
       };
     })
     .filter((item) => Math.abs(item.changes as number) > gap)

@@ -1,18 +1,27 @@
 import { symbols } from "./coins/symbols";
 import { subscribePriceCoin, watchPriceCoin, type PriceCoins } from "./price";
 import { createOrder } from "./trading";
-import { getTP, getSL, nearestLowerMultipleOfTen, getAmount } from "./utils";
-import { ORDER_TYPE_MAP } from "./trading/constants";
-import { getWallet } from "./wallet";
+import { getAmount, getSide, type STRATEGY } from "./utils";
+import { getWallet, watchWallet } from "./wallet";
 import { getBestCoins } from "./coins";
+import { calculatePriceForTargetPnL } from "./utils";
 export interface Price {
   old: PriceCoins;
   new: PriceCoins;
 }
 
+const UPDATE_BEST_PRICE_TIME = 1000;
+const BEST_PRICE_GAP = 0.3;
+const DIVERSIFICATION_COUNT = 5;
+const STRATEGY: STRATEGY = "INERTIA";
+const LEVERAGE = 10;
+const TP_GAP = 1;
+const SL_GAP = 0.5;
+
 const symbolList = symbols.map((symbol) => symbol.symbol);
 subscribePriceCoin(symbolList, "indexPrice");
-watchPriceCoin({ time: 500, handler: updatePriceCoin });
+watchWallet();
+watchPriceCoin({ time: UPDATE_BEST_PRICE_TIME, handler: updatePriceCoin });
 
 const price: Price = {
   old: {},
@@ -23,29 +32,71 @@ function updatePriceCoin(data: PriceCoins) {
   price.old = structuredClone(price.new);
   price.new = structuredClone(data);
 
-  if (Object.values(price.old).length && Object.values(price.new).length) {
-    const bestPrice = getBestCoins({ coins: symbolList, price, gap: 0.5 }); // TODO: Значения параметра gap вынести в константу
+  if (!Object.values(price.old).length || !Object.values(price.new).length)
+    return;
 
-    if (bestPrice.length) {
-      getWallet().then((data) => {
-        const balance = Number(data.totalMarginBalance);
-        if (bestPrice[0].price && bestPrice[0].changes) {
-          console.log(getAmount(balance, bestPrice[0].price));
-          console.table(bestPrice);
+  const bestPrice = getBestCoins({
+    coins: symbolList,
+    price,
+    gap: BEST_PRICE_GAP,
+  });
+  if (!bestPrice.length) return;
 
-          const amount = getAmount(balance / 5, bestPrice[0].price);
-          const side = bestPrice[0].changes < 0 ? "Buy" : "Sell";
-          createOrder({
-            symbol: bestPrice[0].symbol,
-            amount: nearestLowerMultipleOfTen(amount),
-            side: side,
-            tp: getTP(bestPrice[0].price, 0.2, ORDER_TYPE_MAP[side]),
-            sl: getSL(bestPrice[0].price, 0.2, ORDER_TYPE_MAP[side]),
-          }).then((data) => {
-            console.log("createOrder", data);
-          });
-        }
-      });
-    }
-  }
+  const { totalMarginBalance } = getWallet();
+  const balance = Number(totalMarginBalance) / DIVERSIFICATION_COUNT;
+
+  console.table(bestPrice);
+
+  bestPrice.forEach(async (coin, _, array) => {
+    const purchaseAmount = balance | array.length;
+    const amount = getAmount({
+      balance: purchaseAmount,
+      price: coin.price,
+      leverage: LEVERAGE,
+    });
+    const result = await createOrder({
+      symbol: coin.symbol,
+      price: coin.price,
+      amount: amount,
+      side: getSide({ changes: coin.changes, strategy: STRATEGY }),
+      tp: getTP({
+        price: coin.price,
+        size: amount,
+        gap: TP_GAP,
+        side: getSide({ changes: coin.changes, strategy: STRATEGY }),
+      }),
+      sl: getSL({
+        price: coin.price,
+        size: amount,
+        gap: SL_GAP,
+        side: getSide({ changes: coin.changes, strategy: STRATEGY }),
+      }),
+    });
+    console.log("order result", result);
+  });
+}
+
+interface TPSLParams {
+  price: number;
+  gap: number;
+  size: number;
+  side: "Buy" | "Sell";
+}
+
+function getTP({ price, size, gap, side }: TPSLParams) {
+  return calculatePriceForTargetPnL({
+    entryPrice: price,
+    positionSize: size,
+    positionType: side === "Buy" ? "long" : "short",
+    targetPnL: gap,
+  });
+}
+
+function getSL({ price, size, gap, side }: TPSLParams) {
+  return calculatePriceForTargetPnL({
+    entryPrice: price,
+    positionSize: size,
+    positionType: side === "Buy" ? "long" : "short",
+    targetPnL: -gap,
+  });
 }

@@ -6,24 +6,19 @@ export interface CreateOrderParams {
   symbol: Symbol;
   side: "Buy" | "Sell";
   amount: number;
+  price?: number;
   tp: number;
-  sl: number;
+  sl?: number;
 }
 
 export function createOrder({
   symbol,
   side,
   amount,
+  price,
   tp,
   sl,
 }: CreateOrderParams) {
-  console.log({
-    symbol,
-    side,
-    amount,
-    tp,
-    sl,
-  });
   return client
     .submitOrder({
       category: "linear",
@@ -31,14 +26,15 @@ export function createOrder({
       side: side,
       qty: amount.toString(),
       orderType: "Market",
+      // price: price.toString(),
+      timeInForce: "PostOnly",
       takeProfit: tp.toString(), // Уровень тейк-профита
       stopLoss: sl.toString(), // Уровень стоп-лосса
-      // tpslMode: "Partial", // Режим TP/SL
     })
     .then((result) => {
       return result;
     })
     .catch((err) => {
-      console.error("getAccountInfo error: ", err);
+      console.error("order submit error: ", err);
     });
 }

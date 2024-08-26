@@ -1,5 +1,10 @@
-export function getAmount(balance: number, price: number) {
-  return (balance / price) * 10;
+interface GetAmountParams {
+  balance: number;
+  price: number;
+  leverage?: number;
+}
+export function getAmount({ balance, price, leverage = 10 }: GetAmountParams) {
+  return nearestLowerMultipleOfTen((balance / price) * leverage);
 }
 
 export function nearestLowerMultipleOfTen(num: number) {
