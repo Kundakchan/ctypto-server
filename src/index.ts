@@ -1,10 +1,15 @@
 import { symbols } from "./coins/symbols";
 import { subscribePriceCoin, watchPriceCoin, type PriceCoins } from "./price";
 import { createOrder } from "./trading";
-import { getAmount, getSide, type STRATEGY } from "./utils";
+import {
+  getAmount,
+  getSide,
+  getSLByPnL,
+  getTPByPnL,
+  type STRATEGY,
+} from "./utils";
 import { getWallet, watchWallet } from "./wallet";
 import { getBestCoins } from "./coins";
-import { calculatePriceForTargetPnL } from "./utils";
 export interface Price {
   old: PriceCoins;
   new: PriceCoins;
@@ -59,13 +64,13 @@ function updatePriceCoin(data: PriceCoins) {
       price: coin.price,
       amount: amount,
       side: getSide({ changes: coin.changes, strategy: STRATEGY }),
-      tp: getTP({
+      tp: getTPByPnL({
         price: coin.price,
         size: amount,
         gap: TP_GAP,
         side: getSide({ changes: coin.changes, strategy: STRATEGY }),
       }),
-      sl: getSL({
+      sl: getSLByPnL({
         price: coin.price,
         size: amount,
         gap: SL_GAP,
@@ -73,30 +78,5 @@ function updatePriceCoin(data: PriceCoins) {
       }),
     });
     console.log("order result", result);
-  });
-}
-
-interface TPSLParams {
-  price: number;
-  gap: number;
-  size: number;
-  side: "Buy" | "Sell";
-}
-
-function getTP({ price, size, gap, side }: TPSLParams) {
-  return calculatePriceForTargetPnL({
-    entryPrice: price,
-    positionSize: size,
-    positionType: side === "Buy" ? "long" : "short",
-    targetPnL: gap,
-  });
-}
-
-function getSL({ price, size, gap, side }: TPSLParams) {
-  return calculatePriceForTargetPnL({
-    entryPrice: price,
-    positionSize: size,
-    positionType: side === "Buy" ? "long" : "short",
-    targetPnL: -gap,
   });
 }

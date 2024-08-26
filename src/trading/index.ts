@@ -8,7 +8,7 @@ export interface CreateOrderParams {
   amount: number;
   price?: number;
   tp: number;
-  sl?: number;
+  sl: number;
 }
 
 export function createOrder({
