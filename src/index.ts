@@ -1,6 +1,7 @@
 import { symbols } from "./coins/symbols";
 import { subscribePriceCoin, watchPriceCoin, type PriceCoins } from "./price";
 import { createOrder } from "./trading";
+import { watchPosition, checkOpenPosition } from "./position";
 import {
   getAmount,
   getSide,
@@ -16,16 +17,17 @@ export interface Price {
 }
 
 const UPDATE_BEST_PRICE_TIME = 1000;
-const BEST_PRICE_GAP = 0.3;
+const BEST_PRICE_GAP = 0.5;
 const DIVERSIFICATION_COUNT = 5;
-const STRATEGY: STRATEGY = "INERTIA";
+const STRATEGY: STRATEGY = "REVERSE";
 const LEVERAGE = 10;
-const TP_GAP = 1;
-const SL_GAP = 0.5;
+const TP_GAP = 0.2;
+const SL_GAP = 1;
 
 const symbolList = symbols.map((symbol) => symbol.symbol);
-subscribePriceCoin(symbolList, "indexPrice");
 watchWallet();
+watchPosition();
+subscribePriceCoin(symbolList, "indexPrice");
 watchPriceCoin({ time: UPDATE_BEST_PRICE_TIME, handler: updatePriceCoin });
 
 const price: Price = {
@@ -53,6 +55,8 @@ function updatePriceCoin(data: PriceCoins) {
   console.table(bestPrice);
 
   bestPrice.forEach(async (coin, _, array) => {
+    if (checkOpenPosition(coin.symbol)) return;
+
     const purchaseAmount = balance | array.length;
     const amount = getAmount({
       balance: purchaseAmount,
