@@ -37,7 +37,7 @@ export function getTPByPnL({ price, size, gap, side }: TPSLParams) {
     entryPrice: price,
     positionSize: size,
     positionType: side === "Buy" ? "long" : "short",
-    targetPnL: gap,
+    targetPnLPercentage: gap,
   });
 }
 
@@ -46,6 +46,6 @@ export function getSLByPnL({ price, size, gap, side }: TPSLParams) {
     entryPrice: price,
     positionSize: size,
     positionType: side === "Buy" ? "long" : "short",
-    targetPnL: -gap,
+    targetPnLPercentage: -gap,
   });
 }

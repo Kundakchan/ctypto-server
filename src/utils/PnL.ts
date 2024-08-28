@@ -33,29 +33,56 @@ export function calculatePnL({
   return unrealizedPnL;
 }
 
-/**
- * Функция для расчёта цены монеты при достижении указанного нереализованного PnL.
- *
- * @param entryPrice - Средняя цена входа позиции.
- * @param positionSize - Размер позиции (количество контрактов).
- * @param positionType - Тип позиции ('long' или 'short').
- * @param targetPnL - Целевой нереализованный PnL.
- * @returns Цена монеты при достижении указанного PnL.
- */
+// /**
+//  * Функция для расчёта цены монеты при достижении указанного нереализованного PnL.
+//  *
+//  * @param entryPrice - Средняя цена входа позиции.
+//  * @param positionSize - Размер позиции (количество контрактов).
+//  * @param positionType - Тип позиции ('long' или 'short').
+//  * @param targetPnL - Целевой нереализованный PnL.
+//  * @returns Цена монеты при достижении указанного PnL.
+//  */
+
+// interface CalculatePriceForTargetPnLParams {
+//   entryPrice: number;
+//   positionSize: number;
+//   positionType: "long" | "short";
+//   targetPnL: number;
+// }
+// export function calculatePriceForTargetPnL({
+//   entryPrice,
+//   positionSize,
+//   positionType,
+//   targetPnL,
+// }: CalculatePriceForTargetPnLParams): number {
+//   let targetPrice: number;
+
+//   if (positionType === "long") {
+//     targetPrice = targetPnL / positionSize + entryPrice;
+//   } else if (positionType === "short") {
+//     targetPrice = entryPrice - targetPnL / positionSize;
+//   } else {
+//     throw new Error("Неверный тип позиции. Используйте 'long' или 'short'.");
+//   }
+
+//   return targetPrice;
+// }
 
 interface CalculatePriceForTargetPnLParams {
   entryPrice: number;
   positionSize: number;
   positionType: "long" | "short";
-  targetPnL: number;
+  targetPnLPercentage: number;
 }
+
 export function calculatePriceForTargetPnL({
   entryPrice,
   positionSize,
   positionType,
-  targetPnL,
+  targetPnLPercentage,
 }: CalculatePriceForTargetPnLParams): number {
   let targetPrice: number;
+  const targetPnL = entryPrice * positionSize * (targetPnLPercentage / 100);
 
   if (positionType === "long") {
     targetPrice = targetPnL / positionSize + entryPrice;

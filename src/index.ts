@@ -16,13 +16,13 @@ export interface Price {
   new: PriceCoins;
 }
 
-const UPDATE_BEST_PRICE_TIME = 1000;
-const BEST_PRICE_GAP = 0.5;
-const DIVERSIFICATION_COUNT = 5;
-const STRATEGY: STRATEGY = "REVERSE";
+const UPDATE_BEST_PRICE_TIME = 500;
+const BEST_PRICE_GAP = 0.4;
+const DIVERSIFICATION_COUNT = 15;
+const STRATEGY: STRATEGY = "INERTIA";
 const LEVERAGE = 10;
-const TP_GAP = 0.2;
-const SL_GAP = 1;
+const TP_GAP = 5;
+const SL_GAP = 0.3;
 
 const symbolList = symbols.map((symbol) => symbol.symbol);
 watchWallet();
