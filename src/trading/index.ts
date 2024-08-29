@@ -1,24 +1,13 @@
 import { client } from "../client";
 import type { Symbol } from "../coins/symbols";
-// getPositionInfo Активный ордер
 
 export interface CreateOrderParams {
   symbol: Symbol;
   side: "Buy" | "Sell";
   amount: number;
-  price?: number;
-  tp: number;
-  sl: number;
 }
 
-export function createOrder({
-  symbol,
-  side,
-  amount,
-  price,
-  tp,
-  sl,
-}: CreateOrderParams) {
+export function createOrder({ symbol, side, amount }: CreateOrderParams) {
   return client
     .submitOrder({
       category: "linear",
@@ -26,10 +15,6 @@ export function createOrder({
       side: side,
       qty: amount.toString(),
       orderType: "Market",
-      // price: price.toString(),
-      timeInForce: "PostOnly",
-      takeProfit: tp.toString(), // Уровень тейк-профита
-      stopLoss: sl.toString(), // Уровень стоп-лосса
     })
     .then((result) => {
       return result;
@@ -38,3 +23,23 @@ export function createOrder({
       console.error("order submit error: ", err);
     });
 }
+
+export const setTrailingStopOrder = async ({
+  symbol,
+  trailingStopSum,
+}: {
+  symbol: Symbol;
+  trailingStopSum: number;
+}) => {
+  try {
+    const data = await client.setTradingStop({
+      category: "linear",
+      symbol: symbol,
+      trailingStop: trailingStopSum.toString(),
+      positionIdx: 0,
+    });
+    return data;
+  } catch (error) {
+    console.error("Ошибка при установке скользящего стоп-ордера:", error);
+  }
+};

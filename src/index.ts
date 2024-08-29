@@ -1,14 +1,8 @@
-import { symbols } from "./coins/symbols";
+import { symbols, Symbol } from "./coins/symbols";
 import { subscribePriceCoin, watchPriceCoin, type PriceCoins } from "./price";
-import { createOrder } from "./trading";
+import { createOrder, setTrailingStopOrder } from "./trading";
 import { watchPosition, checkOpenPosition } from "./position";
-import {
-  getAmount,
-  getSide,
-  getSLByPnL,
-  getTPByPnL,
-  type STRATEGY,
-} from "./utils";
+import { getAmount, getSide, type STRATEGY } from "./utils";
 import { getWallet, watchWallet } from "./wallet";
 import { getBestCoins } from "./coins";
 export interface Price {
@@ -16,17 +10,15 @@ export interface Price {
   new: PriceCoins;
 }
 
-const UPDATE_BEST_PRICE_TIME = 500;
-const BEST_PRICE_GAP = 0.4;
-const DIVERSIFICATION_COUNT = 15;
+const UPDATE_BEST_PRICE_TIME = 1000;
+const BEST_PRICE_GAP = 0.2;
+const DIVERSIFICATION_COUNT = 20;
 const STRATEGY: STRATEGY = "INERTIA";
 const LEVERAGE = 10;
-const TP_GAP = 5;
-const SL_GAP = 0.3;
 
 const symbolList = symbols.map((symbol) => symbol.symbol);
 watchWallet();
-watchPosition();
+watchPosition({ afterOpening: setStopOrder });
 subscribePriceCoin(symbolList, "indexPrice");
 watchPriceCoin({ time: UPDATE_BEST_PRICE_TIME, handler: updatePriceCoin });
 
@@ -52,12 +44,13 @@ function updatePriceCoin(data: PriceCoins) {
   const { totalMarginBalance } = getWallet();
   const balance = Number(totalMarginBalance) / DIVERSIFICATION_COUNT;
 
-  console.table(bestPrice);
+  // console.table(bestPrice);
 
   bestPrice.forEach(async (coin, _, array) => {
     if (checkOpenPosition(coin.symbol)) return;
 
     const purchaseAmount = balance | array.length;
+    // TODO: Нужно сделать тип покупки лимитный
     const amount = getAmount({
       balance: purchaseAmount,
       price: coin.price,
@@ -65,22 +58,38 @@ function updatePriceCoin(data: PriceCoins) {
     });
     const result = await createOrder({
       symbol: coin.symbol,
-      price: coin.price,
       amount: amount,
       side: getSide({ changes: coin.changes, strategy: STRATEGY }),
-      tp: getTPByPnL({
-        price: coin.price,
-        size: amount,
-        gap: TP_GAP,
-        side: getSide({ changes: coin.changes, strategy: STRATEGY }),
-      }),
-      sl: getSLByPnL({
-        price: coin.price,
-        size: amount,
-        gap: SL_GAP,
-        side: getSide({ changes: coin.changes, strategy: STRATEGY }),
-      }),
     });
-    console.log("order result", result);
   });
+}
+
+function setStopOrder(order: Record<string, string | number>) {
+  const trailingStopSum = calculatePercentage({
+    entryPrice: Number(order.entryPrice),
+    percentage: 2,
+  });
+  setTrailingStopOrder({
+    symbol: order.symbol as unknown as Symbol,
+    trailingStopSum: trailingStopSum,
+  }).then((data) => {
+    const record = {
+      symbol: order.symbol,
+      message: data?.retMsg,
+      stopOrder: trailingStopSum,
+      url: `https://www.bybit.com/trade/usdt/${order.symbol}`,
+      ...order,
+    };
+    console.table(record);
+  });
+}
+
+function calculatePercentage({
+  entryPrice,
+  percentage,
+}: {
+  entryPrice: number;
+  percentage: number;
+}) {
+  return (percentage / 100) * entryPrice;
 }

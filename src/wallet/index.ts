@@ -1,5 +1,5 @@
 import type { WalletBalanceV5 } from "bybit-api";
-import { ws, client } from "../client";
+import { ws, client, setHandlerWS } from "../client";
 
 interface Wallet extends Partial<Omit<WalletBalanceV5, "coin">> {}
 
@@ -23,9 +23,12 @@ async function fetchWallet() {
   return wallet;
 }
 
-ws.on("update", (message) => {
-  const { data } = message as { data: WalletBalanceV5[] };
-  setWallet(data[0]);
+setHandlerWS({
+  topic: "wallet",
+  handler: (message) => {
+    const { data } = message as unknown as { data: WalletBalanceV5[] };
+    setWallet(data[0] as WalletBalanceV5);
+  },
 });
 
 async function watchWallet() {
