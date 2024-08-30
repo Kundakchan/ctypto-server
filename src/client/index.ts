@@ -11,12 +11,12 @@ import type {
   WebsocketClient as WebsocketClientType,
 } from "bybit-api";
 
-type HandlersMapKey = "position" | "wallet";
+type HandlersMapKey = "position" | "wallet" | "order";
 interface HandlerWsParams {
   id: string;
   topic: HandlersMapKey;
   creationTime: number;
-  data: Record<string, number | string>[];
+  data: Record<string, string | number>[];
   wsKey: string;
 }
 interface HandlerWs {

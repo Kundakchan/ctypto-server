@@ -5,16 +5,23 @@ export interface CreateOrderParams {
   symbol: Symbol;
   side: "Buy" | "Sell";
   amount: number;
+  price: number;
 }
 
-export function createOrder({ symbol, side, amount }: CreateOrderParams) {
+export function createOrder({
+  symbol,
+  side,
+  amount,
+  price,
+}: CreateOrderParams) {
   return client
     .submitOrder({
       category: "linear",
       symbol: symbol,
       side: side,
       qty: amount.toString(),
-      orderType: "Market",
+      price: price.toString(),
+      orderType: "Limit",
     })
     .then((result) => {
       return result;

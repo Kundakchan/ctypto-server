@@ -2,7 +2,13 @@ import { symbols, Symbol } from "./coins/symbols";
 import { subscribePriceCoin, watchPriceCoin, type PriceCoins } from "./price";
 import { createOrder, setTrailingStopOrder } from "./trading";
 import { watchPosition, checkOpenPosition } from "./position";
-import { getAmount, getSide, type STRATEGY } from "./utils";
+import {
+  calculatePercentage,
+  getAmount,
+  getLimitPrice,
+  getSide,
+  type STRATEGY,
+} from "./utils";
 import { getWallet, watchWallet } from "./wallet";
 import { getBestCoins } from "./coins";
 export interface Price {
@@ -10,9 +16,10 @@ export interface Price {
   new: PriceCoins;
 }
 
-const UPDATE_BEST_PRICE_TIME = 1000;
-const BEST_PRICE_GAP = 0.2;
-const DIVERSIFICATION_COUNT = 20;
+const UPDATE_BEST_PRICE_TIME = 500;
+const BEST_PRICE_GAP = 0.4;
+const DIVERSIFICATION_COUNT = 10;
+const GAP_FOR_LIMIT_PRICE = 0.1;
 const STRATEGY: STRATEGY = "INERTIA";
 const LEVERAGE = 10;
 
@@ -44,22 +51,28 @@ function updatePriceCoin(data: PriceCoins) {
   const { totalMarginBalance } = getWallet();
   const balance = Number(totalMarginBalance) / DIVERSIFICATION_COUNT;
 
-  // console.table(bestPrice);
-
-  bestPrice.forEach(async (coin, _, array) => {
-    if (checkOpenPosition(coin.symbol)) return;
+  bestPrice.forEach((coin, _, array) => {
+    if (checkOpenPosition(coin.symbol)) {
+      console.log("skip", coin.symbol);
+      return;
+    }
 
     const purchaseAmount = balance | array.length;
-    // TODO: Нужно сделать тип покупки лимитный
     const amount = getAmount({
       balance: purchaseAmount,
       price: coin.price,
       leverage: LEVERAGE,
     });
-    const result = await createOrder({
+    const side = getSide({ changes: coin.changes, strategy: STRATEGY });
+    createOrder({
       symbol: coin.symbol,
       amount: amount,
-      side: getSide({ changes: coin.changes, strategy: STRATEGY }),
+      side: side,
+      price: getLimitPrice({
+        entryPrice: coin.price,
+        side: side,
+        percent: GAP_FOR_LIMIT_PRICE,
+      }),
     });
   });
 }
@@ -67,29 +80,10 @@ function updatePriceCoin(data: PriceCoins) {
 function setStopOrder(order: Record<string, string | number>) {
   const trailingStopSum = calculatePercentage({
     entryPrice: Number(order.entryPrice),
-    percentage: 2,
+    percentage: 1,
   });
   setTrailingStopOrder({
     symbol: order.symbol as unknown as Symbol,
     trailingStopSum: trailingStopSum,
-  }).then((data) => {
-    const record = {
-      symbol: order.symbol,
-      message: data?.retMsg,
-      stopOrder: trailingStopSum,
-      url: `https://www.bybit.com/trade/usdt/${order.symbol}`,
-      ...order,
-    };
-    console.table(record);
   });
-}
-
-function calculatePercentage({
-  entryPrice,
-  percentage,
-}: {
-  entryPrice: number;
-  percentage: number;
-}) {
-  return (percentage / 100) * entryPrice;
 }
