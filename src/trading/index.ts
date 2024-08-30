@@ -1,9 +1,9 @@
 import { client } from "../client";
 import type { Symbol } from "../coins/symbols";
-
+import type { Side } from "..";
 export interface CreateOrderParams {
   symbol: Symbol;
-  side: "Buy" | "Sell";
+  side: Side;
   amount: number;
   price: number;
 }

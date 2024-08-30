@@ -11,15 +11,17 @@ import {
 } from "./utils";
 import { getWallet, watchWallet } from "./wallet";
 import { getBestCoins } from "./coins";
+import { logger } from "./utils";
 export interface Price {
   old: PriceCoins;
   new: PriceCoins;
 }
+export type Side = "Buy" | "Sell";
 
 const UPDATE_BEST_PRICE_TIME = 500;
-const BEST_PRICE_GAP = 0.4;
+const BEST_PRICE_GAP = 0.2;
 const DIVERSIFICATION_COUNT = 10;
-const GAP_FOR_LIMIT_PRICE = 0.1;
+const GAP_FOR_LIMIT_PRICE = 10;
 const STRATEGY: STRATEGY = "INERTIA";
 const LEVERAGE = 10;
 
@@ -51,39 +53,70 @@ function updatePriceCoin(data: PriceCoins) {
   const { totalMarginBalance } = getWallet();
   const balance = Number(totalMarginBalance) / DIVERSIFICATION_COUNT;
 
-  bestPrice.forEach((coin, _, array) => {
-    if (checkOpenPosition(coin.symbol)) {
-      console.log("skip", coin.symbol);
-      return;
-    }
+  bestPrice.forEach(async (coin) => {
+    // if (checkOpenPosition(coin.symbol)) {
+    //   console.log("skip", coin.symbol);
+    //   return;
+    // }
 
-    const purchaseAmount = balance | array.length;
     const amount = getAmount({
-      balance: purchaseAmount,
+      balance: balance,
       price: coin.price,
       leverage: LEVERAGE,
     });
     const side = getSide({ changes: coin.changes, strategy: STRATEGY });
-    createOrder({
-      symbol: coin.symbol,
-      amount: amount,
+    const price = getLimitPrice({
+      entryPrice: coin.price,
       side: side,
-      price: getLimitPrice({
-        entryPrice: coin.price,
-        side: side,
-        percent: GAP_FOR_LIMIT_PRICE,
-      }),
+      percent: GAP_FOR_LIMIT_PRICE,
     });
+
+    try {
+      const result = await createOrder({
+        symbol: coin.symbol,
+        amount: amount,
+        side: side,
+        price: price,
+      });
+      if (result) {
+        logger.createOrder({
+          result: result,
+          symbol: coin.symbol,
+          side,
+          price,
+          amount,
+          entryPrice: coin.price,
+        });
+      }
+    } catch (error) {
+      console.error(error);
+    }
   });
 }
 
-function setStopOrder(order: Record<string, string | number>) {
+async function setStopOrder(order: Record<string, string | number>) {
+  const entryPrice = Number(order.entryPrice);
+  const symbol = order.symbol as unknown as Symbol;
   const trailingStopSum = calculatePercentage({
-    entryPrice: Number(order.entryPrice),
+    entryPrice: entryPrice,
     percentage: 1,
   });
-  setTrailingStopOrder({
-    symbol: order.symbol as unknown as Symbol,
-    trailingStopSum: trailingStopSum,
-  });
+
+  try {
+    const result = await setTrailingStopOrder({
+      symbol: symbol,
+      trailingStopSum: trailingStopSum,
+    });
+
+    if (result) {
+      logger.setStopOrder({
+        result: result,
+        symbol: symbol,
+        entryPrice: entryPrice,
+        trailingStopSum: trailingStopSum,
+      });
+    }
+  } catch (error) {
+    console.error(error);
+  }
 }

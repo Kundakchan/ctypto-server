@@ -1,3 +1,5 @@
+import { Side } from "..";
+
 interface CalculatePriceChange {
   (params: { oldPrice: number; newPrice: number }): number;
 }
@@ -6,11 +8,7 @@ interface CalculatePercentage {
 }
 
 interface GetLimitPrice {
-  (params: {
-    side: "Buy" | "Sell";
-    entryPrice: number;
-    percent: number;
-  }): number;
+  (params: { side: Side; entryPrice: number; percent: number }): number;
 }
 
 const calculatePriceChange: CalculatePriceChange = (params) => {

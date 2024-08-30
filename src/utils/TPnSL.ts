@@ -1,3 +1,4 @@
+import { Side } from "..";
 import { calculatePriceForTargetPnL } from "./PnL";
 
 type OrderType = "long" | "short";
@@ -29,7 +30,7 @@ interface TPSLParams {
   price: number;
   gap: number;
   size: number;
-  side: "Buy" | "Sell";
+  side: Side;
 }
 
 export function getTPByPnL({ price, size, gap, side }: TPSLParams) {
