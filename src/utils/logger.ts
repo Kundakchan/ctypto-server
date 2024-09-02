@@ -18,6 +18,7 @@ interface CreateOrder {
     price: number;
     amount: number;
     entryPrice: number;
+    changes: number;
   }): void;
 }
 
@@ -46,6 +47,11 @@ const createOrder: CreateOrder = (params) => {
       message: "Успешно создан ордер!",
       symbol: params.symbol,
       url: `https://www.bybit.com/trade/usdt/${params.symbol}`,
+      "Направления покупки (side)": params.side,
+      "Количество токенов (amount)": params.amount,
+      "Цена покупки (price)": params.price,
+      "Текущая рыночная цена (entryPrice)": params.entryPrice,
+      "Разница от предыдущей цены в % (changes)": params.changes,
     });
   } else {
     console.error("Ошибка создания ордера!");
@@ -55,6 +61,7 @@ const createOrder: CreateOrder = (params) => {
       "Количество токенов (amount)": params.amount,
       "Цена покупки (price)": params.price,
       "Текущая рыночная цена (entryPrice)": params.entryPrice,
+      "Разница от предыдущей цены в % (changes)": params.changes,
       ...params.result,
     });
   }

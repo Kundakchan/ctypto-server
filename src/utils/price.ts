@@ -25,9 +25,9 @@ const getLimitPrice: GetLimitPrice = (params) => {
     percentage: params.percent,
   });
   if (params.side === "Buy") {
-    return params.entryPrice + difference;
-  } else {
     return params.entryPrice - difference;
+  } else {
+    return params.entryPrice + difference;
   }
 };
 

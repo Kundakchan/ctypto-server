@@ -2,6 +2,7 @@ import { symbols, Symbol } from "./coins/symbols";
 import { subscribePriceCoin, watchPriceCoin, type PriceCoins } from "./price";
 import { createOrder, setTrailingStopOrder } from "./trading";
 import { watchPosition, checkOpenPosition } from "./position";
+import { watchOrders, checkNewOrder, getOrdersActive } from "./order";
 import {
   calculatePercentage,
   getAmount,
@@ -18,8 +19,13 @@ export interface Price {
 }
 export type Side = "Buy" | "Sell";
 
+export enum SIDE {
+  long = "Buy",
+  short = "Sell",
+}
+
 const UPDATE_BEST_PRICE_TIME = 500;
-const BEST_PRICE_GAP = 0.2;
+const BEST_PRICE_GAP = 0.3;
 const DIVERSIFICATION_COUNT = 10;
 const GAP_FOR_LIMIT_PRICE = 10;
 const STRATEGY: STRATEGY = "INERTIA";
@@ -28,6 +34,7 @@ const LEVERAGE = 10;
 const symbolList = symbols.map((symbol) => symbol.symbol);
 watchWallet();
 watchPosition({ afterOpening: setStopOrder });
+watchOrders();
 subscribePriceCoin(symbolList, "indexPrice");
 watchPriceCoin({ time: UPDATE_BEST_PRICE_TIME, handler: updatePriceCoin });
 
@@ -51,13 +58,19 @@ function updatePriceCoin(data: PriceCoins) {
   if (!bestPrice.length) return;
 
   const { totalMarginBalance } = getWallet();
-  const balance = Number(totalMarginBalance) / DIVERSIFICATION_COUNT;
+  const balance =
+    Number(totalMarginBalance) /
+    (DIVERSIFICATION_COUNT - getOrdersActive().length);
 
   bestPrice.forEach(async (coin) => {
-    // if (checkOpenPosition(coin.symbol)) {
-    //   console.log("skip", coin.symbol);
-    //   return;
-    // }
+    // console.log({
+    //   order: checkNewOrder(coin.symbol),
+    //   position: checkOpenPosition(coin.symbol),
+    // });
+    if (checkNewOrder(coin.symbol) || checkOpenPosition(coin.symbol)) {
+      console.log("skip", coin.symbol);
+      return;
+    }
 
     const amount = getAmount({
       balance: balance,
@@ -86,6 +99,7 @@ function updatePriceCoin(data: PriceCoins) {
           price,
           amount,
           entryPrice: coin.price,
+          changes: coin.changes,
         });
       }
     } catch (error) {

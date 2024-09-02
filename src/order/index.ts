@@ -1,6 +1,10 @@
+import type { AccountOrderV5, OrderStatusV5 } from "bybit-api";
 import { ws, setHandlerWS } from "../client";
 import type { Symbol } from "../coins/symbols";
-interface Order extends Record<string, string | number> {}
+
+interface Order extends AccountOrderV5 {
+  symbol: Symbol;
+}
 
 let orders: Order[] = [];
 
@@ -8,34 +12,43 @@ function watchOrders() {
   setHandlerWS({
     topic: "order",
     handler: (message) => {
-      orders = message.data;
-      console.log("order", message);
+      const list = message.data as unknown as Order[];
+      list.forEach((order) => {
+        setOrder(order);
+      });
     },
   });
 
   ws.subscribeV5("order", "linear");
 }
 
-type OrderStatus =
-  | "New"
-  | "PartiallyFilled"
-  | "Untriggered"
-  | "Rejected"
-  | "PartiallyFilledCanceled"
-  | "Filled"
-  | "Cancelled"
-  | "Triggered"
-  | "Deactivated";
+function setOrder(order: Order) {
+  const { symbol } = order;
+  const index = getIndexOrderBySymbol(symbol);
+  if (index === -1) {
+    orders.push(order);
+  } else {
+    orders[index] = order;
+  }
+}
 
-const getOrdersByStatus = (status: OrderStatus) =>
-  orders.filter((order) => order.orderStatus === status);
+function getIndexOrderBySymbol(symbol: Symbol) {
+  return orders.findIndex((order) => order.symbol === symbol);
+}
 
-const checkOpenOrder = (symbol: Symbol) => {
-  return !!getOrdersByStatus("New").filter((order) => order.symbol === symbol)
+function getOrderByStatus(status: OrderStatusV5) {
+  return orders.filter((order) => order.orderStatus === status);
+}
+
+function checkNewOrder(symbol: Symbol) {
+  return !!getOrderByStatus("New").filter((order) => order.symbol === symbol)
     .length;
-};
+}
 
-const getOrderList = () =>
-  getOrdersByStatus("New").map((order) => order.symbol);
+function getOrdersActive() {
+  const ordersNew = getOrderByStatus("New");
+  const ordersFilled = getOrderByStatus("Filled");
+  return [...ordersNew, ...ordersFilled];
+}
 
-export { watchOrders, checkOpenOrder, getOrderList };
+export { watchOrders, checkNewOrder, getOrdersActive };

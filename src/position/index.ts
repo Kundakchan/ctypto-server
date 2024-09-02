@@ -19,9 +19,9 @@ function watchPosition({ afterOpening }: WatchPositionParams) {
           delete positions[record.symbol as Symbol];
         } else {
           positions[record.symbol as Symbol] = record;
-          if (afterOpening) {
-            afterOpening(record);
-          }
+          // if (afterOpening) {
+          //   afterOpening(record);
+          // }
         }
       });
     },
