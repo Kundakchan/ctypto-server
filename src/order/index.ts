@@ -1,20 +1,56 @@
 import type { AccountOrderV5, OrderStatusV5 } from "bybit-api";
 import { ws, setHandlerWS } from "../client";
-import type { Symbol } from "../coins/symbols";
+import { type Symbol } from "../coins/symbols";
+import { cancelOrder } from "../trading";
+import { TIME_CANCEL_ORDER } from "..";
 
 interface Order extends AccountOrderV5 {
   symbol: Symbol;
 }
 
-let orders: Order[] = [];
+interface OrderList extends Partial<Record<Symbol, Order>> {}
 
-function watchOrders() {
+interface Orders extends Record<OrderStatusV5, OrderList> {}
+
+let orders: Orders = {
+  Created: {},
+  New: {},
+  Rejected: {},
+  PartiallyFilled: {},
+  PartiallyFilledCanceled: {},
+  Filled: {},
+  Cancelled: {},
+  Untriggered: {},
+  Triggered: {},
+  Deactivated: {},
+  Active: {},
+};
+interface WatchPositionParams {
+  afterFilled?: ({
+    symbol,
+    entryPrice,
+  }: {
+    symbol: Symbol;
+    entryPrice: number;
+  }) => void;
+}
+
+function watchOrders(params: WatchPositionParams) {
   setHandlerWS({
     topic: "order",
     handler: (message) => {
       const list = message.data as unknown as Order[];
       list.forEach((order) => {
         setOrder(order);
+        setDeletionByTimer(order);
+        if (order.orderStatus === "Filled") {
+          if (params.afterFilled) {
+            params.afterFilled({
+              symbol: order.symbol,
+              entryPrice: Number(order.price),
+            });
+          }
+        }
       });
     },
   });
@@ -23,32 +59,53 @@ function watchOrders() {
 }
 
 function setOrder(order: Order) {
-  const { symbol } = order;
-  const index = getIndexOrderBySymbol(symbol);
-  if (index === -1) {
-    orders.push(order);
-  } else {
-    orders[index] = order;
+  const { symbol, orderStatus } = order;
+
+  switch (orderStatus) {
+    case "New":
+      orders.New[symbol] = order;
+      break;
+    case "Filled":
+      if (orders.Filled[symbol]) {
+        delete orders.Filled[symbol];
+      } else {
+        delete orders.New[symbol];
+        orders.Filled[symbol] = order;
+      }
+      break;
+    case "Untriggered":
+      orders.Untriggered[symbol];
+      break;
+    case "Cancelled":
+      delete orders.New[symbol];
+      break;
+    case "Deactivated":
+      delete orders.Untriggered[symbol];
+      break;
   }
 }
 
-function getIndexOrderBySymbol(symbol: Symbol) {
-  return orders.findIndex((order) => order.symbol === symbol);
+function checkNewOrder(symbol: Symbol): boolean {
+  return !!(orders.New?.[symbol] || !!orders.Filled?.[symbol]);
 }
 
-function getOrderByStatus(status: OrderStatusV5) {
-  return orders.filter((order) => order.orderStatus === status);
+function getOrdersActiveLength() {
+  return [...Object.keys(orders.New), ...Object.keys(orders.Filled)].length;
 }
 
-function checkNewOrder(symbol: Symbol) {
-  return !!getOrderByStatus("New").filter((order) => order.symbol === symbol)
-    .length;
+const orderTimer: Partial<Record<Symbol, ReturnType<typeof setTimeout>>> = {};
+
+function setDeletionByTimer(order: Order) {
+  if (order.orderStatus === "New") {
+    orderTimer[order.symbol] = setTimeout(() => {
+      cancelOrder({
+        symbol: order.symbol,
+        orderId: order.orderId,
+      });
+    }, TIME_CANCEL_ORDER);
+  } else if (order.orderStatus === "Filled") {
+    clearTimeout(orderTimer[order.symbol]);
+  }
 }
 
-function getOrdersActive() {
-  const ordersNew = getOrderByStatus("New");
-  const ordersFilled = getOrderByStatus("Filled");
-  return [...ordersNew, ...ordersFilled];
-}
-
-export { watchOrders, checkNewOrder, getOrdersActive };
+export { watchOrders, checkNewOrder, getOrdersActiveLength };

@@ -22,6 +22,7 @@ export function createOrder({
       qty: amount.toString(),
       price: price.toString(),
       orderType: "Limit",
+      timeInForce: "PostOnly",
     })
     .then((result) => {
       return result;
@@ -48,5 +49,26 @@ export const setTrailingStopOrder = async ({
     return data;
   } catch (error) {
     console.error("Ошибка при установке скользящего стоп-ордера:", error);
+  }
+};
+
+export const cancelOrder = async ({
+  symbol,
+  orderId,
+}: {
+  symbol: Symbol;
+  orderId: string;
+}) => {
+  try {
+    const result = await client.cancelOrder({
+      category: "linear",
+      symbol: symbol,
+      orderId: orderId,
+    });
+    console.warn("Ордер отменён");
+    console.table(result);
+    return result;
+  } catch (error) {
+    console.error(error);
   }
 };

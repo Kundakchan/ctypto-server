@@ -1,8 +1,7 @@
 import { symbols, Symbol } from "./coins/symbols";
 import { subscribePriceCoin, watchPriceCoin, type PriceCoins } from "./price";
 import { createOrder, setTrailingStopOrder } from "./trading";
-import { watchPosition, checkOpenPosition } from "./position";
-import { watchOrders, checkNewOrder, getOrdersActive } from "./order";
+import { watchOrders, checkNewOrder, getOrdersActiveLength } from "./order";
 import {
   calculatePercentage,
   getAmount,
@@ -25,16 +24,17 @@ export enum SIDE {
 }
 
 const UPDATE_BEST_PRICE_TIME = 500;
-const BEST_PRICE_GAP = 0.3;
-const DIVERSIFICATION_COUNT = 10;
-const GAP_FOR_LIMIT_PRICE = 10;
+const BEST_PRICE_GAP = 0.2;
+const DIVERSIFICATION_COUNT = 5;
+const GAP_FOR_LIMIT_PRICE = 0.002;
+const TRAILING_STOP_SUM = 0.5;
+export const TIME_CANCEL_ORDER = 60000;
 const STRATEGY: STRATEGY = "INERTIA";
 const LEVERAGE = 10;
 
 const symbolList = symbols.map((symbol) => symbol.symbol);
 watchWallet();
-watchPosition({ afterOpening: setStopOrder });
-watchOrders();
+watchOrders({ afterFilled: setStopOrder });
 subscribePriceCoin(symbolList, "indexPrice");
 watchPriceCoin({ time: UPDATE_BEST_PRICE_TIME, handler: updatePriceCoin });
 
@@ -57,20 +57,21 @@ function updatePriceCoin(data: PriceCoins) {
   });
   if (!bestPrice.length) return;
 
-  const { totalMarginBalance } = getWallet();
+  const { totalAvailableBalance } = getWallet();
+  console.warn("Кошелёк", getWallet());
+  console.warn(DIVERSIFICATION_COUNT);
+  console.warn(getOrdersActiveLength());
   const balance =
-    Number(totalMarginBalance) /
-    (DIVERSIFICATION_COUNT - getOrdersActive().length);
+    Number(totalAvailableBalance) /
+    (DIVERSIFICATION_COUNT - getOrdersActiveLength());
 
   bestPrice.forEach(async (coin) => {
-    // console.log({
-    //   order: checkNewOrder(coin.symbol),
-    //   position: checkOpenPosition(coin.symbol),
-    // });
-    if (checkNewOrder(coin.symbol) || checkOpenPosition(coin.symbol)) {
+    if (checkNewOrder(coin.symbol)) {
       console.log("skip", coin.symbol);
       return;
     }
+
+    console.warn("Сумма покупки", balance);
 
     const amount = getAmount({
       balance: balance,
@@ -91,6 +92,7 @@ function updatePriceCoin(data: PriceCoins) {
         side: side,
         price: price,
       });
+
       if (result) {
         logger.createOrder({
           result: result,
@@ -108,12 +110,16 @@ function updatePriceCoin(data: PriceCoins) {
   });
 }
 
-async function setStopOrder(order: Record<string, string | number>) {
-  const entryPrice = Number(order.entryPrice);
-  const symbol = order.symbol as unknown as Symbol;
+async function setStopOrder({
+  symbol,
+  entryPrice,
+}: {
+  symbol: Symbol;
+  entryPrice: number;
+}) {
   const trailingStopSum = calculatePercentage({
     entryPrice: entryPrice,
-    percentage: 1,
+    percentage: TRAILING_STOP_SUM,
   });
 
   try {
