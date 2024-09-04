@@ -2,9 +2,9 @@ import type { AccountOrderV5, OrderStatusV5 } from "bybit-api";
 import { ws, setHandlerWS } from "../client";
 import { type Symbol } from "../coins/symbols";
 import { cancelOrder } from "../trading";
-import { TIME_CANCEL_ORDER } from "..";
+import { SETTINGS } from "..";
 
-interface Order extends AccountOrderV5 {
+export interface Order extends AccountOrderV5 {
   symbol: Symbol;
 }
 
@@ -26,13 +26,7 @@ let orders: Orders = {
   Active: {},
 };
 interface WatchPositionParams {
-  afterFilled?: ({
-    symbol,
-    entryPrice,
-  }: {
-    symbol: Symbol;
-    entryPrice: number;
-  }) => void;
+  afterFilled?: (params: Order) => void;
 }
 
 function watchOrders(params: WatchPositionParams) {
@@ -45,10 +39,7 @@ function watchOrders(params: WatchPositionParams) {
         setDeletionByTimer(order);
         if (order.orderStatus === "Filled") {
           if (params.afterFilled) {
-            params.afterFilled({
-              symbol: order.symbol,
-              entryPrice: Number(order.price),
-            });
+            params.afterFilled(order);
           }
         }
       });
@@ -102,10 +93,19 @@ function setDeletionByTimer(order: Order) {
         symbol: order.symbol,
         orderId: order.orderId,
       });
-    }, TIME_CANCEL_ORDER);
+    }, SETTINGS.TIMER_ORDER_CANCEL);
   } else if (order.orderStatus === "Filled") {
     clearTimeout(orderTimer[order.symbol]);
   }
 }
 
-export { watchOrders, checkNewOrder, getOrdersActiveLength };
+const getOrdersFilled = () => orders.Filled;
+const getOrderFilled = (symbol: Symbol) => orders.Filled[symbol];
+
+export {
+  watchOrders,
+  checkNewOrder,
+  getOrdersActiveLength,
+  getOrdersFilled,
+  getOrderFilled,
+};
