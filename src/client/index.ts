@@ -6,12 +6,12 @@ const API_SECRET = process.env.DEMO_API_SECRET;
 
 const { RestClientV5, WebsocketClient } = require("bybit-api");
 
-import type {
-  RestClientV5 as RestClientV5Type,
-  WebsocketClient as WebsocketClientType,
+import {
+  type RestClientV5 as RestClientV5Type,
+  type WebsocketClient as WebsocketClientType,
 } from "bybit-api";
 
-type HandlersMapKey = "position" | "wallet" | "order";
+type HandlersMapKey = "position" | "wallet" | "order" | "tickers";
 interface HandlerWsParams {
   id: string;
   topic: HandlersMapKey;

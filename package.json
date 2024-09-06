@@ -10,6 +10,7 @@
   "description": "",
   "dependencies": {
     "bybit-api": "^3.10.13",
+    "chalk": "^5.3.0",
     "dotenv": "^16.4.5"
   },
   "devDependencies": {

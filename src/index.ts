@@ -1,5 +1,4 @@
-import { symbols, Symbol } from "./coins/symbols";
-import { subscribePriceCoin, watchPriceCoin, type PriceCoins } from "./price";
+import { Symbol } from "./coins/symbols";
 import { closePosition, createOrder, setTrailingStopOrder } from "./trading";
 import {
   watchOrders,
@@ -13,16 +12,10 @@ import {
   getAmount,
   getLimitPrice,
   getSide,
-  type STRATEGY,
 } from "./utils";
 import { getWallet, watchWallet } from "./wallet";
-import { getBestCoins } from "./coins";
 import { logger } from "./utils";
 import { getPosition } from "./position";
-export interface Price {
-  old: PriceCoins;
-  new: PriceCoins;
-}
 export type Side = "Buy" | "Sell";
 
 export enum SIDE {
@@ -30,20 +23,31 @@ export enum SIDE {
   short = "Sell",
 }
 
+import { fetchCoins, getCoinsKey } from "./tokens";
+import { watchTicker } from "./ticker";
+import {
+  watchPrice,
+  setTickerToMatrix,
+  hasConsistentChange,
+  MatrixChanges,
+  getCoinPriceBySymbol,
+} from "./pice";
+import chalk from "chalk";
+
 export const SETTINGS = {
-  TIME_CHECK_PRICE: 120000, // Время обновления проверки цены на все монеты (мс)
-  PRICE_DIFFERENCE: 1, // Разница цены от предыдущей проверки (%)
-  DIVERSIFICATION_COUNT: 5, // Количество закупаемых монет (шт)
+  TIME_CHECK_PRICE: 60000, // Время обновления проверки цены на все монеты (мс)
+  DIVERSIFICATION_COUNT: 10, // Количество закупаемых монет (шт)
   LIMIT_ORDER_PRICE_VARIATION: 0.002, // Процент отката цены для лимитной закупки (%)
-  TRAILING_STOP: 1, // Скользящий стоп-ордер (%)
+  TRAILING_STOP: 0.5, // Скользящий стоп-ордер (%)
   TIMER_ORDER_CANCEL: 120000, // Время отмены ордера если он не выполнился (мс)
   STRATEGY: "INERTIA", // Стратегия торговли (INERTIA, REVERSE)
   LEVERAGE: 10, // Торговое плечо (число)
   TIMER_POSITION_CLEAR: 30, // Время закрытия позиции если отсутствует рост PnL (минуты)
   INCREASING_PNL: 3, // Процент увелечения PnL для избежания закрытия позиции
+  HISTORY_CHANGES_SIZE: 5, // Количество временных отрезков для отслеживания динамики изменения цены (шт)
+  DYNAMICS_PRICE_CHANGES: 0.2, // Минимальный процент изменения цены относительно прошлой (%)
 } as const;
 
-const symbolList = symbols.map((symbol) => symbol.symbol);
 watchWallet();
 watchOrders({
   afterFilled: (order) => {
@@ -51,84 +55,91 @@ watchOrders({
     setClearTimer(order);
   },
 });
-subscribePriceCoin(symbolList, "indexPrice");
-watchPriceCoin({ time: SETTINGS.TIME_CHECK_PRICE, handler: updatePriceCoin });
 
-const price: Price = {
-  old: {},
-  new: {},
-};
-
-function updatePriceCoin(data: PriceCoins) {
-  price.old = structuredClone(price.new);
-  price.new = structuredClone(data);
-
-  if (!Object.values(price.old).length || !Object.values(price.new).length)
-    return;
-
-  const bestPrice = getBestCoins({
-    coins: symbolList,
-    price,
-    gap: SETTINGS.PRICE_DIFFERENCE,
-  });
-  if (!bestPrice.length) return;
-
-  const { totalAvailableBalance } = getWallet();
-  const divider = SETTINGS.DIVERSIFICATION_COUNT - getOrdersActiveLength();
-  const balance = Number(totalAvailableBalance) / (divider ? divider : 1);
-
-  bestPrice.forEach(async (coin) => {
-    if (checkNewOrder(coin.symbol)) {
-      console.log("skip", coin.symbol);
-      return;
-    }
-    if (balance < 1) {
-      console.warn("НЕДОСТАТОЧНО СРЕДСТВ!", {
-        symbols: coin.symbol,
-        balance: totalAvailableBalance,
-      });
+fetchCoins().then(() => {
+  watchTicker(setTickerToMatrix);
+  watchPrice((event) => {
+    const bestCoins = getBestCoins(event);
+    if (!bestCoins.length) {
+      console.log(chalk.yellow("Нет подходящих монет для покупки"));
       return;
     }
 
-    const amount = getAmount({
-      balance: balance,
-      price: coin.price,
-      leverage: SETTINGS.LEVERAGE,
-    });
-    const side = getSide({
-      changes: coin.changes,
-      strategy: SETTINGS.STRATEGY,
-    });
-    const price = getLimitPrice({
-      entryPrice: coin.price,
-      side: side,
-      percent: SETTINGS.LIMIT_ORDER_PRICE_VARIATION,
-    });
+    const { totalAvailableBalance } = getWallet();
+    const divider = SETTINGS.DIVERSIFICATION_COUNT - getOrdersActiveLength();
+    const balance = Number(totalAvailableBalance) / (divider ? divider : 1);
 
-    try {
-      const result = await createOrder({
-        symbol: coin.symbol,
-        amount: amount,
-        side: side,
-        price: price,
-      });
+    bestCoins.forEach(async (coin) => {
+      const bestCoin = getCoinPriceBySymbol(coin.symbol);
+      const changes = coin.historyChanges.at(coin.historyChanges.length - 1);
 
-      if (result) {
-        logger.createOrder({
-          result: result,
-          symbol: coin.symbol,
-          side,
-          price,
-          amount,
-          entryPrice: coin.price,
-          changes: coin.changes,
+      if (!bestCoin || !bestCoin.lastPrice || !changes) {
+        console.log(chalk.red(`${coin.symbol} - Нет данных`));
+        console.log({
+          changes,
+          bestCoin,
         });
+        return;
       }
-    } catch (error) {
-      console.error(error);
-    }
+
+      if (checkNewOrder(bestCoin.symbol)) {
+        console.log(
+          chalk.yellow(
+            `${bestCoin.symbol} - Монета уже существует в реестре ордеров`
+          )
+        );
+        return;
+      }
+      if (balance < 1) {
+        console.log(
+          chalk.yellow("Недостаточно средств для покупки монеты!", {
+            symbol: bestCoin.symbol,
+            balance: totalAvailableBalance,
+          })
+        );
+        return;
+      }
+
+      const amount = getAmount({
+        balance: balance,
+        price: parseFloat(bestCoin.lastPrice),
+        leverage: SETTINGS.LEVERAGE,
+      });
+      const side = getSide({
+        changes: changes,
+        strategy: SETTINGS.STRATEGY,
+      });
+      const price = getLimitPrice({
+        entryPrice: parseFloat(bestCoin.lastPrice),
+        side: side,
+        percent: SETTINGS.LIMIT_ORDER_PRICE_VARIATION,
+      });
+
+      try {
+        const result = await createOrder({
+          symbol: bestCoin.symbol,
+          amount: amount,
+          side: side,
+          price: price,
+        });
+
+        if (result) {
+          logger.createOrder({
+            result: result,
+            symbol: bestCoin.symbol,
+            side,
+            price,
+            amount,
+            entryPrice: parseFloat(bestCoin.lastPrice),
+            changes: changes,
+          });
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    });
   });
-}
+});
 
 async function setStopOrder(params: Order) {
   const trailingStopSum = calculatePercentage({
@@ -197,4 +208,21 @@ function calculatePercentagePnL({
     return 0;
   }
   return (unrealisedPnl / positionIM) * 100;
+}
+
+function getBestCoins(event: MatrixChanges) {
+  return getCoinsKey()
+    .map((item) => {
+      const { check, historyChanges } = hasConsistentChange({
+        data: event[item as Symbol],
+        field: "indexPrice",
+        step: SETTINGS.DYNAMICS_PRICE_CHANGES,
+      });
+      return {
+        symbol: item as Symbol,
+        check,
+        historyChanges,
+      };
+    })
+    .filter((item) => item.check);
 }
