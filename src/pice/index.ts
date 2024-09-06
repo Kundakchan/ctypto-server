@@ -1,7 +1,7 @@
 import { SETTINGS } from "..";
 import { type Symbol } from "../coins/symbols";
 import type { Ticker } from "../ticker";
-import { getCoinsKey } from "../tokens";
+import { getCoinsKey } from "../coins";
 import chalk from "chalk";
 
 interface Coins extends Partial<Record<Symbol, Ticker>> {}

@@ -1,21 +1,6 @@
-import { Symbol } from "./coins/symbols";
-import { closePosition, createOrder, setTrailingStopOrder } from "./trading";
-import {
-  watchOrders,
-  checkNewOrder,
-  getOrdersActiveLength,
-  Order,
-  getOrderFilled,
-} from "./order";
-import {
-  calculatePercentage,
-  getAmount,
-  getLimitPrice,
-  getSide,
-} from "./utils";
-import { getWallet, watchWallet } from "./wallet";
-import { logger } from "./utils";
-import { getPosition } from "./position";
+import { getOrdersActiveLength, watchOrders } from "./order";
+import { watchWallet } from "./wallet";
+
 export type Side = "Buy" | "Sell";
 
 export enum SIDE {
@@ -23,206 +8,184 @@ export enum SIDE {
   short = "Sell",
 }
 
-import { fetchCoins, getCoinsKey } from "./tokens";
-import { watchTicker } from "./ticker";
-import {
-  watchPrice,
-  setTickerToMatrix,
-  hasConsistentChange,
-  MatrixChanges,
-  getCoinPriceBySymbol,
-} from "./pice";
+import { chooseBestCoin, fetchCoins, getBestCoins } from "./coins";
+import { Ticker, watchTicker } from "./ticker";
+import { watchPrice, setTickerToMatrix, getCoinPriceBySymbol } from "./pice";
 import chalk from "chalk";
+import { createOrder } from "./trading";
 
 export const SETTINGS = {
   TIME_CHECK_PRICE: 60000, // Время обновления проверки цены на все монеты (мс)
-  DIVERSIFICATION_COUNT: 10, // Количество закупаемых монет (шт)
+  DIVERSIFICATION_COUNT: 4, // Количество закупаемых ордеров (шт)
   LIMIT_ORDER_PRICE_VARIATION: 0.002, // Процент отката цены для лимитной закупки (%)
-  TRAILING_STOP: 0.5, // Скользящий стоп-ордер (%)
+  // TRAILING_STOP: 0.5, // Скользящий стоп-ордер (%)
   TIMER_ORDER_CANCEL: 120000, // Время отмены ордера если он не выполнился (мс)
   STRATEGY: "INERTIA", // Стратегия торговли (INERTIA, REVERSE)
   LEVERAGE: 10, // Торговое плечо (число)
-  TIMER_POSITION_CLEAR: 30, // Время закрытия позиции если отсутствует рост PnL (минуты)
-  INCREASING_PNL: 3, // Процент увелечения PnL для избежания закрытия позиции
+  // TIMER_POSITION_CLEAR: 30, // Время закрытия позиции если отсутствует рост PnL (минуты)
+  // INCREASING_PNL: 3, // Процент увелечения PnL для избежания закрытия позиции
   HISTORY_CHANGES_SIZE: 5, // Количество временных отрезков для отслеживания динамики изменения цены (шт)
-  DYNAMICS_PRICE_CHANGES: 0.2, // Минимальный процент изменения цены относительно прошлой (%)
+  DYNAMICS_PRICE_CHANGES: 0.1, // Минимальный процент изменения цены относительно прошлой (%)
 } as const;
 
-watchWallet();
-watchOrders({
-  afterFilled: (order) => {
-    setStopOrder(order);
-    setClearTimer(order);
-  },
-});
+// watchWallet();
+// watchOrders({
+//   afterFilled: (order) => {},
+// });
 
 fetchCoins().then(() => {
   watchTicker(setTickerToMatrix);
   watchPrice((event) => {
+    // if (getOrdersActiveLength()) {
+    //   console.log(chalk.yellow("Пропустить закупку монет"));
+    //   return;
+    // }
+
     const bestCoins = getBestCoins(event);
     if (!bestCoins.length) {
       console.log(chalk.yellow("Нет подходящих монет для покупки"));
       return;
+    } else {
+      const coin = chooseBestCoin(bestCoins);
+
+      const date = new Date();
+
+      // Определяем массив с названиями месяцев
+      const months = [
+        "января",
+        "февраля",
+        "марта",
+        "апреля",
+        "мая",
+        "июня",
+        "июля",
+        "августа",
+        "сентября",
+        "октября",
+        "ноября",
+        "декабря",
+      ];
+
+      // Получаем день, месяц и время
+      const day = date.getDate();
+      const month = months[date.getMonth()];
+      const hours = String(date.getHours()).padStart(2, "0"); // Форматируем часы
+      const minutes = String(date.getMinutes()).padStart(2, "0"); // Форматируем минуты
+
+      console.log({
+        url: `https://www.bybit.com/trade/usdt/${coin?.symbol}`,
+        side: coin?.position,
+        createAt: `${day} ${month} ${hours}:${minutes}`,
+      });
+      // if (coin) {
+      //   const active = { ...getCoinPriceBySymbol(coin.symbol), ...coin };
+      //   buyCoin(active);
+      // } else {
+      //   console.log(chalk.red("Не удалось корректно выбрать монету"));
+      // }
     }
-
-    const { totalAvailableBalance } = getWallet();
-    const divider = SETTINGS.DIVERSIFICATION_COUNT - getOrdersActiveLength();
-    const balance = Number(totalAvailableBalance) / (divider ? divider : 1);
-
-    bestCoins.forEach(async (coin) => {
-      const bestCoin = getCoinPriceBySymbol(coin.symbol);
-      const changes = coin.historyChanges.at(coin.historyChanges.length - 1);
-
-      if (!bestCoin || !bestCoin.lastPrice || !changes) {
-        console.log(chalk.red(`${coin.symbol} - Нет данных`));
-        console.log({
-          changes,
-          bestCoin,
-        });
-        return;
-      }
-
-      if (checkNewOrder(bestCoin.symbol)) {
-        console.log(
-          chalk.yellow(
-            `${bestCoin.symbol} - Монета уже существует в реестре ордеров`
-          )
-        );
-        return;
-      }
-      if (balance < 1) {
-        console.log(
-          chalk.yellow("Недостаточно средств для покупки монеты!", {
-            symbol: bestCoin.symbol,
-            balance: totalAvailableBalance,
-          })
-        );
-        return;
-      }
-
-      const amount = getAmount({
-        balance: balance,
-        price: parseFloat(bestCoin.lastPrice),
-        leverage: SETTINGS.LEVERAGE,
-      });
-      const side = getSide({
-        changes: changes,
-        strategy: SETTINGS.STRATEGY,
-      });
-      const price = getLimitPrice({
-        entryPrice: parseFloat(bestCoin.lastPrice),
-        side: side,
-        percent: SETTINGS.LIMIT_ORDER_PRICE_VARIATION,
-      });
-
-      try {
-        const result = await createOrder({
-          symbol: bestCoin.symbol,
-          amount: amount,
-          side: side,
-          price: price,
-        });
-
-        if (result) {
-          logger.createOrder({
-            result: result,
-            symbol: bestCoin.symbol,
-            side,
-            price,
-            amount,
-            entryPrice: parseFloat(bestCoin.lastPrice),
-            changes: changes,
-          });
-        }
-      } catch (error) {
-        console.error(error);
-      }
-    });
   });
 });
 
-async function setStopOrder(params: Order) {
-  const trailingStopSum = calculatePercentage({
-    entryPrice: Number(params.price),
-    percentage: SETTINGS.TRAILING_STOP,
-  });
+interface BuyCoinParams extends Ticker {
+  value: number;
+  position: Side;
+}
+const buyCoin = async (active: BuyCoinParams) => {
+  if (!active.lastPrice) {
+    throw new Error("Отсутствует свойства lastPrice");
+  }
 
   try {
-    const result = await setTrailingStopOrder({
-      symbol: params.symbol,
-      trailingStopSum: trailingStopSum,
+    const result = await createOrder({
+      symbol: active.symbol,
+      side: active.position,
+      amount: getAmount({
+        balance: 100,
+        lastPrice: parseFloat(active.lastPrice),
+      })[0],
+      price: getPrice({
+        lastPrice: parseFloat(active.lastPrice),
+        side: active.position,
+        percentage: SETTINGS.LIMIT_ORDER_PRICE_VARIATION,
+      }),
     });
-
-    if (result) {
-      logger.setStopOrder({
-        result: result,
-        symbol: params.symbol,
-        entryPrice: Number(params.price),
-        trailingStopSum: trailingStopSum,
-      });
-    }
+    console.log(`https://www.bybit.com/trade/usdt/${active.symbol}`);
+    console.log(result);
   } catch (error) {
     console.error(error);
   }
-}
+};
 
-async function setClearTimer(order: Order) {
-  setTimeout(async () => {
-    const orderFilled = getOrderFilled(order.symbol);
-    if (!orderFilled) return;
-
-    try {
-      const positions = await getPosition({ symbol: orderFilled.symbol });
-      await positions.forEach(async (position) => {
-        const percentPnL = calculatePercentagePnL({
-          positionIM: Number(position.positionIM),
-          unrealisedPnl: Number(position.unrealisedPnl),
-        });
-        if (percentPnL < SETTINGS.INCREASING_PNL) {
-          console.warn(`Closed position ${position.symbol}`);
-          await closePosition(position);
-        }
-      });
-      if (getOrderFilled(order.symbol)) {
-        setClearTimer(order);
-      }
-    } catch (error) {
-      console.error(error);
-    }
-  }, minutesToMilliseconds(SETTINGS.TIMER_POSITION_CLEAR));
-}
-
-function minutesToMilliseconds(minutes: number) {
-  return minutes * 60 * 1000;
-}
-
-function calculatePercentagePnL({
-  unrealisedPnl,
-  positionIM,
+const getAmount = ({
+  balance,
+  lastPrice,
 }: {
-  positionIM: number;
-  unrealisedPnl: number;
-}) {
-  if (positionIM === 0) {
-    console.error(new Error("Ошибка: деление на ноль"));
-    return 0;
+  balance: number;
+  lastPrice: number;
+}) => {
+  const money = decreaseByPercentage(balance * SETTINGS.LEVERAGE, 6);
+  const amount = money / lastPrice;
+  if (lastPrice < 1) {
+    return divideNumber(amount, SETTINGS.DIVERSIFICATION_COUNT).map((item) =>
+      Math.round(item)
+    );
+  } else {
+    return divideNumber(amount, SETTINGS.DIVERSIFICATION_COUNT).map((item) =>
+      roundToFirstDecimal(item)
+    );
   }
-  return (unrealisedPnl / positionIM) * 100;
+};
+
+function roundToFirstDecimal(value: number) {
+  const firstDecimal = Math.floor(value * 10) % 10;
+  return firstDecimal === 0 ? Math.floor(value) : Math.round(value * 10) / 10;
 }
 
-function getBestCoins(event: MatrixChanges) {
-  return getCoinsKey()
-    .map((item) => {
-      const { check, historyChanges } = hasConsistentChange({
-        data: event[item as Symbol],
-        field: "indexPrice",
-        step: SETTINGS.DYNAMICS_PRICE_CHANGES,
-      });
-      return {
-        symbol: item as Symbol,
-        check,
-        historyChanges,
-      };
-    })
-    .filter((item) => item.check);
-}
+const decreaseByPercentage = (value: number, percentage: number): number => {
+  if (value < 0 || percentage < 0 || percentage > 100) {
+    throw new Error("Некорректные входные данные.");
+  }
+  return value * (1 - percentage / 100);
+};
+
+const divideNumber = (total: number, parts: number): number[] => {
+  if (parts <= 0) throw new Error("Количество частей должно быть больше 0");
+
+  const firstPart = total / (Math.pow(2, parts) - 1);
+  return Array.from({ length: parts }, (_, i) => firstPart * Math.pow(2, i));
+};
+
+const getPrice = ({
+  lastPrice,
+  side,
+  percentage,
+}: {
+  lastPrice: number;
+  side: Side;
+  percentage: number;
+}): number => {
+  const adjustment = (lastPrice * percentage) / 100;
+
+  if (side === "Sell") {
+    return lastPrice + adjustment; // Увеличиваем на процент для Sell
+  } else if (side === "Buy") {
+    return lastPrice - adjustment; // Уменьшаем на процент для Buy
+  } else {
+    throw new Error("Invalid side. Use 'Buy' or 'Sell'.");
+  }
+};
+
+// function calculatePercentagePnL({
+//   unrealisedPnl,
+//   positionIM,
+// }: {
+//   positionIM: number;
+//   unrealisedPnl: number;
+// }) {
+//   if (positionIM === 0) {
+//     console.error(new Error("Ошибка: деление на ноль"));
+//     return 0;
+//   }
+//   return (unrealisedPnl / positionIM) * 100;
+// }

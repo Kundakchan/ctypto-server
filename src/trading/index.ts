@@ -15,6 +15,12 @@ export function createOrder({
   amount,
   price,
 }: CreateOrderParams) {
+  console.log({
+    symbol,
+    side,
+    amount,
+    price,
+  });
   return client
     .submitOrder({
       category: "linear",

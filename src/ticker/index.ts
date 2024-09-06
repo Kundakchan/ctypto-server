@@ -1,6 +1,6 @@
 const ws = new WebSocket("wss://stream.bybit.com/v5/public/linear");
 import type { Symbol } from "../coins/symbols";
-import { getCoinsKey } from "../tokens";
+import { getCoinsKey } from "../coins";
 
 import type { TickerLinearInverseV5 } from "bybit-api";
 export interface Ticker extends Partial<TickerLinearInverseV5> {

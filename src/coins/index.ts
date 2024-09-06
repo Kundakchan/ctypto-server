@@ -1,63 +1,117 @@
+import type { LinearInverseInstrumentInfoV5 } from "bybit-api";
 import { client } from "../client";
-import fs from "fs";
-import { calculatePriceChange } from "../utils";
-import { Price } from "..";
-import type { Symbol as Coin } from "./symbols";
+import type { Symbol } from "../coins/symbols";
+import chalk from "chalk";
+import { SETTINGS, Side } from "..";
+import { hasConsistentChange, MatrixChanges } from "../pice";
 
-function writeSymbolsToFile(symbols: string[]): void {
-  const data = `export default ${JSON.stringify(symbols)} as const`;
+interface InstrumentsInfo
+  extends Partial<Record<Symbol, LinearInverseInstrumentInfoV5>> {}
 
-  fs.writeFile("src/coins/symbols.ts", data, (err) => {
-    if (err) {
-      console.error("Ошибка при записи файла:", err);
-    } else {
-      console.log("Данные успешно записаны в файл symbols.json");
-    }
-  });
-}
+const instrumentsInfo: InstrumentsInfo = {};
 
-export function getCoins() {
-  return client
-    .getInstrumentsInfo({ category: "linear" })
-    .then((data: any) => {
-      const list = data.result.list.map((coin: any) => coin) as any[];
-      writeSymbolsToFile(
-        list.filter(
-          (item) =>
-            item.contractType === "LinearPerpetual" && item.quoteCoin === "USDT"
-        )
-      );
-    })
-    .catch((error: any) => {
-      console.log("error", error);
+const fetchCoins = async () => {
+  try {
+    console.log(chalk.blue("Получения списка монет..."));
+    const { result } = await client.getInstrumentsInfo({
+      category: "linear",
+      status: "Trading",
     });
-}
+    result.list.forEach((coin) => {
+      if (coin.quoteCoin === "USDT") {
+        instrumentsInfo[coin.symbol as Symbol] = coin;
+      }
+    });
+    console.log(chalk.green("Монеты успешно получены!"));
+    return instrumentsInfo;
+  } catch (error) {
+    console.error(error);
+    throw error;
+  }
+};
 
-export function getBestCoins({
-  coins,
-  price,
-  gap,
-}: {
-  coins: Coin[];
-  price: Price;
-  gap: number;
-}) {
-  return coins
-    .map((symbol) => {
-      const oldPrice = price["old"][symbol]?.price ?? 0;
-      const newPrice = price["new"][symbol]?.price ?? 0;
-
-      const changes =
-        oldPrice && newPrice ? calculatePriceChange({ oldPrice, newPrice }) : 0;
-
+const getBestCoins = (event: MatrixChanges) => {
+  return getCoinsKey()
+    .map((item) => {
+      const { check, historyChanges } = hasConsistentChange({
+        data: event[item as Symbol],
+        field: "lastPrice", // "volume24h", // "indexPrice", // turnover24h
+        step: SETTINGS.DYNAMICS_PRICE_CHANGES,
+      });
       return {
-        symbol,
-        changes,
-        url: `https://www.bybit.com/trade/usdt/${symbol}`,
-        price: newPrice,
-        original: price["new"][symbol]?.original,
+        symbol: item as Symbol,
+        check,
+        historyChanges,
       };
     })
-    .filter((item) => Math.abs(item.changes as number) > gap)
-    .sort((a, b) => (b.changes as number) - (a.changes as number));
+    .filter((item) => item.check);
+};
+
+function chooseBestCoin(list: ReturnType<typeof getBestCoins>) {
+  const coins = list.map((coin) => ({
+    symbol: coin.symbol,
+    value: calculateAverage(coin.historyChanges),
+  }));
+
+  return findExtremeValueObject(coins);
 }
+
+const calculateAverage = (numbers: number[]) =>
+  numbers.length ? numbers.reduce((sum, num) => sum + num) / numbers.length : 0;
+
+interface FindExtremeValueObjectData {
+  symbol: Symbol;
+  value: number;
+}
+interface FindExtremeValueObject {
+  (data: FindExtremeValueObjectData[]): {
+    symbol: Symbol;
+    value: number;
+    position: Side;
+  } | null;
+}
+
+const findExtremeValueObject: FindExtremeValueObject = (data) => {
+  // Проверяем, пустой ли массив данных
+  if (data.length === 0) {
+    return null; // Возвращаем null, если нет объектов для оценки
+  }
+
+  // Инициализируем крайний объект первым элементом массива
+  let extremeObj = data[0];
+
+  // Проходим по каждому объекту в массиве данных
+  for (const currentObj of data) {
+    // Преобразуем значения в положительные числа
+    const currentValue = Math.abs(currentObj.value);
+    const extremeValue = Math.abs(extremeObj.value);
+
+    // Обновляем крайний объект, если текущий объект имеет большее положительное значение
+    if (currentValue > extremeValue) {
+      extremeObj = currentObj;
+    }
+  }
+
+  // Определяем позицию в зависимости от исходного значения
+  const position = Math.sign(extremeObj.value) === -1 ? "Sell" : "Buy";
+
+  // Возвращаем найденный крайний объект с дополнительным свойством position
+  return {
+    symbol: extremeObj.symbol,
+    value: Math.abs(extremeObj.value),
+    position,
+  };
+};
+
+const getCoins = () => instrumentsInfo;
+const getCoinsKey = () => Object.keys(instrumentsInfo);
+const getCoinBySymbol = (symbol: Symbol) => instrumentsInfo[symbol];
+
+export {
+  fetchCoins,
+  getCoins,
+  getCoinsKey,
+  getCoinBySymbol,
+  getBestCoins,
+  chooseBestCoin,
+};
