@@ -1,111 +1,72 @@
 import type { AccountOrderV5, OrderStatusV5 } from "bybit-api";
 import { ws, setHandlerWS } from "../client";
-import { type Symbol } from "../coins/symbols";
-import { cancelOrder } from "../trading";
-import { SETTINGS } from "..";
+import type { Symbol } from "../coins/symbols";
 
 export interface Order extends AccountOrderV5 {
   symbol: Symbol;
 }
 
-interface OrderList extends Partial<Record<Symbol, Order>> {}
-
-interface Orders extends Record<OrderStatusV5, OrderList> {}
-
-let orders: Orders = {
-  Created: {},
-  New: {},
-  Rejected: {},
-  PartiallyFilled: {},
-  PartiallyFilledCanceled: {},
-  Filled: {},
-  Cancelled: {},
-  Untriggered: {},
-  Triggered: {},
-  Deactivated: {},
-  Active: {},
-};
-interface WatchPositionParams {
-  afterFilled?: (params: Order) => void;
+interface WatchOrdersParams {
+  afterFilled?: (params: Order[]) => void;
 }
 
-function watchOrders(params: WatchPositionParams) {
+let orders: Order[] = [];
+
+function watchOrders(params: WatchOrdersParams) {
   setHandlerWS({
     topic: "order",
     handler: (message) => {
-      const list = message.data as unknown as Order[];
-      list.forEach((order) => {
-        setOrder(order);
-        setDeletionByTimer(order);
-        if (order.orderStatus === "Filled") {
-          if (params.afterFilled) {
-            params.afterFilled(order);
-          }
+      const data = message.data as unknown as Order[];
+      data.forEach((order) => {
+        const action = actionsMap[order.orderStatus];
+        if (action) {
+          action(order);
         }
       });
+
+      const { afterFilled } = params;
+      if (afterFilled) afterFilled(data);
     },
   });
 
   ws.subscribeV5("order", "linear");
 }
 
-function setOrder(order: Order) {
-  const { symbol, orderStatus } = order;
-
-  switch (orderStatus) {
-    case "New":
-      orders.New[symbol] = order;
-      break;
-    case "Filled":
-      if (orders.Filled[symbol]) {
-        delete orders.Filled[symbol];
-      } else {
-        delete orders.New[symbol];
-        orders.Filled[symbol] = order;
-      }
-      break;
-    case "Untriggered":
-      orders.Untriggered[symbol];
-      break;
-    case "Cancelled":
-      delete orders.New[symbol];
-      break;
-    case "Deactivated":
-      delete orders.Untriggered[symbol];
-      break;
+interface ActionOrder {
+  (params: Order): void;
+}
+const setOrder: ActionOrder = (params) => {
+  const index = orders.findIndex((order) => order.orderId === params.orderId);
+  if (index === -1) {
+    orders.push(params);
+  } else {
+    orders[index] = params;
   }
-}
-
-function checkNewOrder(symbol: Symbol): boolean {
-  return !!(orders.New?.[symbol] || !!orders.Filled?.[symbol]);
-}
-
-function getOrdersActiveLength() {
-  return [...Object.keys(orders.New), ...Object.keys(orders.Filled)].length;
-}
-
-const orderTimer: Partial<Record<Symbol, ReturnType<typeof setTimeout>>> = {};
-
-function setDeletionByTimer(order: Order) {
-  if (order.orderStatus === "New") {
-    orderTimer[order.symbol] = setTimeout(() => {
-      cancelOrder({
-        symbol: order.symbol,
-        orderId: order.orderId,
-      });
-    }, SETTINGS.TIMER_ORDER_CANCEL);
-  } else if (order.orderStatus === "Filled") {
-    clearTimeout(orderTimer[order.symbol]);
-  }
-}
-
-const getOrdersFilled = () => orders.Filled;
-const getOrderFilled = (symbol: Symbol) => orders.Filled[symbol];
-
-export {
-  watchOrders,
-  checkNewOrder,
-  getOrdersActiveLength,
-  getOrdersFilled,
-  getOrderFilled,
 };
+
+const removeOrder: ActionOrder = (params) => {
+  orders = orders.filter((order) => order.orderId !== params.orderId);
+};
+
+const actionsMap: Partial<Record<OrderStatusV5, ActionOrder>> = {
+  New: setOrder,
+  PartiallyFilled: setOrder,
+  Untriggered: setOrder,
+  Rejected: removeOrder,
+  PartiallyFilledCanceled: removeOrder,
+  Filled: removeOrder,
+  Cancelled: removeOrder,
+  Triggered: removeOrder,
+  Deactivated: removeOrder,
+};
+
+const findOrdersBySymbolAndStatus = (symbol: Symbol, status: OrderStatusV5) => {
+  return orders.filter(
+    (order) => order.symbol === symbol && order.orderStatus === status
+  );
+};
+
+const hasOrder = (symbol: Symbol) =>
+  !!findOrdersBySymbolAndStatus(symbol, "New").length;
+
+export { watchOrders, hasOrder };

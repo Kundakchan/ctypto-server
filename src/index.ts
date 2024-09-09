@@ -1,5 +1,5 @@
-import { getOrdersActiveLength, watchOrders } from "./order";
-import { watchWallet } from "./wallet";
+import { hasOrder, watchOrders } from "./order";
+import { getWallet, watchWallet } from "./wallet";
 
 export type Side = "Buy" | "Sell";
 
@@ -13,76 +13,51 @@ import { Ticker, watchTicker } from "./ticker";
 import { watchPrice, setTickerToMatrix, getCoinPriceBySymbol } from "./pice";
 import chalk from "chalk";
 import { createOrder } from "./trading";
+import { getPositionsCount, hasPosition, watchPositions } from "./position";
 
 export const SETTINGS = {
-  TIME_CHECK_PRICE: 60000, // Время обновления проверки цены на все монеты (мс)
-  DIVERSIFICATION_COUNT: 4, // Количество закупаемых ордеров (шт)
-  LIMIT_ORDER_PRICE_VARIATION: 0.002, // Процент отката цены для лимитной закупки (%)
-  // TRAILING_STOP: 0.5, // Скользящий стоп-ордер (%)
+  TIME_CHECK_PRICE: 6000, // Время обновления проверки цены на все монеты (мс)
+  LIMIT_ORDER_PRICE_VARIATION: 1, // Процент отката цены для лимитной закупки (%)
   TIMER_ORDER_CANCEL: 120000, // Время отмены ордера если он не выполнился (мс)
   STRATEGY: "INERTIA", // Стратегия торговли (INERTIA, REVERSE)
   LEVERAGE: 10, // Торговое плечо (число)
-  // TIMER_POSITION_CLEAR: 30, // Время закрытия позиции если отсутствует рост PnL (минуты)
-  // INCREASING_PNL: 3, // Процент увелечения PnL для избежания закрытия позиции
-  HISTORY_CHANGES_SIZE: 5, // Количество временных отрезков для отслеживания динамики изменения цены (шт)
+  HISTORY_CHANGES_SIZE: 3, // Количество временных отрезков для отслеживания динамики изменения цены (шт)
   DYNAMICS_PRICE_CHANGES: 0.1, // Минимальный процент изменения цены относительно прошлой (%)
+  FIELD: "lastPrice",
+  NUMBER_OF_POSITIONS: 10,
+  NUMBER_OF_ORDERS: 5,
 } as const;
 
-// watchWallet();
-// watchOrders({
-//   afterFilled: (order) => {},
-// });
+watchWallet();
+watchOrders({
+  afterFilled: (order) => {},
+});
+watchPositions({
+  afterFilled: (position) => {},
+});
 
 fetchCoins().then(() => {
   watchTicker(setTickerToMatrix);
   watchPrice((event) => {
-    // if (getOrdersActiveLength()) {
-    //   console.log(chalk.yellow("Пропустить закупку монет"));
-    //   return;
-    // }
-
     const bestCoins = getBestCoins(event);
     if (!bestCoins.length) {
       console.log(chalk.yellow("Нет подходящих монет для покупки"));
       return;
     } else {
-      const coin = chooseBestCoin(bestCoins);
-
-      const date = new Date();
-
-      // Определяем массив с названиями месяцев
-      const months = [
-        "января",
-        "февраля",
-        "марта",
-        "апреля",
-        "мая",
-        "июня",
-        "июля",
-        "августа",
-        "сентября",
-        "октября",
-        "ноября",
-        "декабря",
-      ];
-
-      // Получаем день, месяц и время
-      const day = date.getDate();
-      const month = months[date.getMonth()];
-      const hours = String(date.getHours()).padStart(2, "0"); // Форматируем часы
-      const minutes = String(date.getMinutes()).padStart(2, "0"); // Форматируем минуты
-
-      console.log({
-        url: `https://www.bybit.com/trade/usdt/${coin?.symbol}`,
-        side: coin?.position,
-        createAt: `${day} ${month} ${hours}:${minutes}`,
+      bestCoins.forEach(async (coin) => {
+        if (!hasPosition(coin.symbol) && !hasOrder(coin.symbol)) {
+          const active = chooseBestCoin([coin]);
+          if (active) {
+            await buyCoin({ ...getCoinPriceBySymbol(coin.symbol), ...active });
+          }
+        } else {
+          console.log(
+            chalk.yellow(
+              `Монета - ${coin.symbol} уже есть в реестре заказов или позиции`
+            )
+          );
+        }
       });
-      // if (coin) {
-      //   const active = { ...getCoinPriceBySymbol(coin.symbol), ...coin };
-      //   buyCoin(active);
-      // } else {
-      //   console.log(chalk.red("Не удалось корректно выбрать монету"));
-      // }
     }
   });
 });
@@ -92,46 +67,51 @@ interface BuyCoinParams extends Ticker {
   position: Side;
 }
 const buyCoin = async (active: BuyCoinParams) => {
-  if (!active.lastPrice) {
-    throw new Error("Отсутствует свойства lastPrice");
+  if (!active[SETTINGS.FIELD]) {
+    throw new Error(`Отсутствует свойства - ${SETTINGS.FIELD}`);
   }
 
-  try {
-    const result = await createOrder({
-      symbol: active.symbol,
-      side: active.position,
-      amount: getAmount({
-        balance: 100,
-        lastPrice: parseFloat(active.lastPrice),
-      })[0],
-      price: getPrice({
-        lastPrice: parseFloat(active.lastPrice),
-        side: active.position,
-        percentage: SETTINGS.LIMIT_ORDER_PRICE_VARIATION,
-      }),
-    });
-    console.log(`https://www.bybit.com/trade/usdt/${active.symbol}`);
-    console.log(result);
-  } catch (error) {
-    console.error(error);
+  // Нужно чтобы возвращал массив с количеством монет где следующий элемент в 2 раза больше предыдущего
+  const amounts = getAmount({
+    balance: getCoinPurchaseBalance(),
+    entryPrice: parseFloat(active[SETTINGS.FIELD] as string),
+  });
+  // Нужно чтобы возвращал массив цен где следующая цена в 2 раза больше/меньше чем предыдущая в зависимости от position (Buy/Sell)
+  const prices = getPrices({
+    entryPrice: parseFloat(active[SETTINGS.FIELD] as string),
+    side: active.position,
+    percentage: SETTINGS.LIMIT_ORDER_PRICE_VARIATION,
+  });
+  return await createRecursiveOrder({ active, amounts, prices, index: 0 });
+};
+
+const getCoinPurchaseBalance = () => {
+  const wallet = getWallet();
+  if (wallet?.totalMarginBalance) {
+    return (
+      parseFloat(wallet.totalMarginBalance) /
+      (SETTINGS.NUMBER_OF_POSITIONS - getPositionsCount())
+    );
+  } else {
+    throw new Error("Не удалось получить информацию о балансе");
   }
 };
 
 const getAmount = ({
   balance,
-  lastPrice,
+  entryPrice,
 }: {
   balance: number;
-  lastPrice: number;
+  entryPrice: number;
 }) => {
   const money = decreaseByPercentage(balance * SETTINGS.LEVERAGE, 6);
-  const amount = money / lastPrice;
-  if (lastPrice < 1) {
-    return divideNumber(amount, SETTINGS.DIVERSIFICATION_COUNT).map((item) =>
+  const amount = money / entryPrice;
+  if (entryPrice < 1) {
+    return divideNumber(amount, SETTINGS.NUMBER_OF_ORDERS).map((item) =>
       Math.round(item)
     );
   } else {
-    return divideNumber(amount, SETTINGS.DIVERSIFICATION_COUNT).map((item) =>
+    return divideNumber(amount, SETTINGS.NUMBER_OF_ORDERS).map((item) =>
       roundToFirstDecimal(item)
     );
   }
@@ -156,36 +136,82 @@ const divideNumber = (total: number, parts: number): number[] => {
   return Array.from({ length: parts }, (_, i) => firstPart * Math.pow(2, i));
 };
 
-const getPrice = ({
-  lastPrice,
-  side,
-  percentage,
-}: {
-  lastPrice: number;
+interface GetPrices {
+  entryPrice: number;
   side: Side;
   percentage: number;
-}): number => {
-  const adjustment = (lastPrice * percentage) / 100;
+}
+const getPrices = ({ entryPrice, side, percentage }: GetPrices) => {
+  const prices = [];
+  let multiplier = 1 + percentage / 100;
 
-  if (side === "Sell") {
-    return lastPrice + adjustment; // Увеличиваем на процент для Sell
-  } else if (side === "Buy") {
-    return lastPrice - adjustment; // Уменьшаем на процент для Buy
-  } else {
-    throw new Error("Invalid side. Use 'Buy' or 'Sell'.");
+  // Вычисляем первую цену в зависимости от side
+  const firstPrice =
+    side === "Sell" ? entryPrice * multiplier : entryPrice / multiplier;
+
+  prices.push(firstPrice);
+
+  // Добавляем последующие цены, изменяя их от предыдущего элемента
+  for (let i = 1; i < SETTINGS.NUMBER_OF_ORDERS; i++) {
+    // Например, создадим 5 цен
+    const previousPrice: number = prices[i - 1];
+    const nextPrice =
+      side === "Sell" ? previousPrice * multiplier : previousPrice / multiplier;
+    multiplier = multiplier + 0.01;
+    prices.push(nextPrice);
   }
+
+  return prices;
 };
 
-// function calculatePercentagePnL({
-//   unrealisedPnl,
-//   positionIM,
-// }: {
-//   positionIM: number;
-//   unrealisedPnl: number;
-// }) {
-//   if (positionIM === 0) {
-//     console.error(new Error("Ошибка: деление на ноль"));
-//     return 0;
-//   }
-//   return (unrealisedPnl / positionIM) * 100;
-// }
+const createRecursiveOrder = async ({
+  active,
+  amounts,
+  prices,
+  index,
+}: {
+  active: BuyCoinParams;
+  amounts: number[];
+  prices: number[];
+  index: number;
+}) => {
+  if (index >= SETTINGS.NUMBER_OF_ORDERS) {
+    console.log(chalk.green(`Все ордера ${active.symbol} успешно создан`));
+    return;
+  }
+
+  try {
+    const result = await createOrder({
+      symbol: active.symbol,
+      side: active.position,
+      amount: amounts[index],
+      price: prices[index],
+    });
+
+    if (!result) {
+      console.log(chalk.red(`Отсутствует result ${result}`));
+      return;
+    }
+
+    if (result.retMsg !== "OK") {
+      console.log(chalk.red(`Ошибка создания ордера: ${active.symbol}`));
+      console.log(chalk.red(result.retMsg));
+      return;
+    }
+
+    console.log(
+      chalk.green(`Ордер ${active.symbol} успешно создан, index: ${index}`)
+    );
+    console.table(result.result);
+
+    await createRecursiveOrder({
+      active,
+      amounts,
+      prices,
+      index: index + 1,
+    });
+    return;
+  } catch (error) {
+    console.error("Error createRecursiveOrder", error);
+  }
+};
