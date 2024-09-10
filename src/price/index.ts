@@ -1,4 +1,4 @@
-import { SETTINGS } from "..";
+import { SETTINGS, Side } from "..";
 import { type Symbol } from "../coins/symbols";
 import type { Ticker } from "../ticker";
 import { getCoinsKey } from "../coins";
@@ -167,9 +167,38 @@ function checkArraySigns(arr: number[], step: number): boolean {
 
 const getCoinPriceBySymbol = (symbol: Symbol) => coins[symbol];
 
+interface GetPrices {
+  entryPrice: number;
+  side: Side;
+  percentage: number;
+}
+const getPrices = ({ entryPrice, side, percentage }: GetPrices) => {
+  const prices = [];
+  let multiplier = 1 + percentage / 100;
+
+  // Вычисляем первую цену в зависимости от side
+  const firstPrice =
+    side === "Sell" ? entryPrice * multiplier : entryPrice / multiplier;
+
+  prices.push(firstPrice);
+
+  // Добавляем последующие цены, изменяя их от предыдущего элемента
+  for (let i = 1; i < SETTINGS.NUMBER_OF_ORDERS; i++) {
+    // Например, создадим 5 цен
+    const previousPrice: number = prices[i - 1];
+    const nextPrice =
+      side === "Sell" ? previousPrice * multiplier : previousPrice / multiplier;
+    multiplier = multiplier + 0.01;
+    prices.push(nextPrice);
+  }
+
+  return prices;
+};
+
 export {
   setTickerToMatrix,
   watchPrice,
   hasConsistentChange,
   getCoinPriceBySymbol,
+  getPrices,
 };
