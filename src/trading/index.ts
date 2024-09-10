@@ -46,8 +46,8 @@ export const cancelOrder = async ({
       symbol: symbol,
       orderId: orderId,
     });
-    // console.warn("Ордер отменён");
-    // console.table(result);
+    console.warn("Ордер отменён");
+    console.table(result);
     return result;
   } catch (error) {
     console.error(error);

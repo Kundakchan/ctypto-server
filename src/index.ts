@@ -1,4 +1,4 @@
-import { hasOrder, watchOrders } from "./order";
+import { hasOrder, setTimerClearOrder, watchOrders } from "./order";
 import { getAmount, getCoinPurchaseBalance, watchWallet } from "./wallet";
 import { chooseBestCoin, fetchCoins, getBestCoins } from "./coins";
 import { Ticker, watchTicker } from "./ticker";
@@ -18,22 +18,31 @@ import {
 
 export type Side = "Buy" | "Sell";
 
+interface BuyCoinParams extends Ticker {
+  value: number;
+  position: Side;
+}
+
 export const SETTINGS = {
   TIME_CHECK_PRICE: 6000, // Время обновления проверки цены на все монеты (мс)
   LIMIT_ORDER_PRICE_VARIATION: 1, // Процент отката цены для лимитной закупки (%)
-  TIMER_ORDER_CANCEL: 120000, // Время отмены ордера если он не выполнился (мс)
-  STRATEGY: "INERTIA", // Стратегия торговли (INERTIA, REVERSE)
+  TIMER_ORDER_CANCEL: 1, // Время отмены ордеров если он не выполнился (мин)
+  // STRATEGY: "INERTIA", // Стратегия торговли (INERTIA, REVERSE)
   LEVERAGE: 10, // Торговое плечо (число)
   HISTORY_CHANGES_SIZE: 3, // Количество временных отрезков для отслеживания динамики изменения цены (шт)
   DYNAMICS_PRICE_CHANGES: 0.2, // Минимальный процент изменения цены относительно прошлой (%)
   FIELD: "lastPrice",
-  NUMBER_OF_POSITIONS: 10,
-  NUMBER_OF_ORDERS: 5,
+  NUMBER_OF_POSITIONS: 10, // Количество закупаемых монет (шт)
+  NUMBER_OF_ORDERS: 5, // Количество создаваемых ордеров для каждой монеты (шт)
 } as const;
 
 watchWallet();
 watchOrders({
-  afterFilled: (orders) => {},
+  afterFilled: (orders) => {
+    orders.forEach((order) => {
+      setTimerClearOrder(order);
+    });
+  },
 });
 watchPositions({
   afterFilled: (positions) => {},
@@ -72,10 +81,6 @@ fetchCoins().then(() => {
   });
 });
 
-interface BuyCoinParams extends Ticker {
-  value: number;
-  position: Side;
-}
 const buyCoin = async (active: BuyCoinParams) => {
   if (!active[SETTINGS.FIELD]) {
     throw new Error(`Отсутствует свойства - ${SETTINGS.FIELD}`);
