@@ -33,26 +33,6 @@ export function createOrder({
     });
 }
 
-export const setTrailingStopOrder = async ({
-  symbol,
-  trailingStopSum,
-}: {
-  symbol: Symbol;
-  trailingStopSum: number;
-}) => {
-  try {
-    const data = await client.setTradingStop({
-      category: "linear",
-      symbol: symbol,
-      trailingStop: trailingStopSum.toString(),
-      positionIdx: 0,
-    });
-    return data;
-  } catch (error) {
-    console.error("Ошибка при установке скользящего стоп-ордера:", error);
-  }
-};
-
 export const cancelOrder = async ({
   symbol,
   orderId,

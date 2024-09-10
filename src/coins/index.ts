@@ -3,7 +3,7 @@ import { client } from "../client";
 import type { Symbol } from "../coins/symbols";
 import chalk from "chalk";
 import { SETTINGS, Side } from "..";
-import { hasConsistentChange, MatrixChanges } from "../pice";
+import { hasConsistentChange, MatrixChanges } from "../price";
 
 interface InstrumentsInfo
   extends Partial<Record<Symbol, LinearInverseInstrumentInfoV5>> {}

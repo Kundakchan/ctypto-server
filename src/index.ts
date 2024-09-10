@@ -3,14 +3,9 @@ import { getWallet, watchWallet } from "./wallet";
 
 export type Side = "Buy" | "Sell";
 
-export enum SIDE {
-  long = "Buy",
-  short = "Sell",
-}
-
 import { chooseBestCoin, fetchCoins, getBestCoins } from "./coins";
 import { Ticker, watchTicker } from "./ticker";
-import { watchPrice, setTickerToMatrix, getCoinPriceBySymbol } from "./pice";
+import { watchPrice, setTickerToMatrix, getCoinPriceBySymbol } from "./price";
 import chalk from "chalk";
 import { createOrder } from "./trading";
 import {
@@ -35,7 +30,7 @@ export const SETTINGS = {
 
 watchWallet();
 watchOrders({
-  afterFilled: (order) => {},
+  afterFilled: (orders) => {},
 });
 watchPositions({
   afterFilled: (positions) => {},
