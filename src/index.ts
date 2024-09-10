@@ -21,13 +21,13 @@ import {
 } from "./position";
 
 export const SETTINGS = {
-  TIME_CHECK_PRICE: 60000, // Время обновления проверки цены на все монеты (мс)
+  TIME_CHECK_PRICE: 6000, // Время обновления проверки цены на все монеты (мс)
   LIMIT_ORDER_PRICE_VARIATION: 1, // Процент отката цены для лимитной закупки (%)
   TIMER_ORDER_CANCEL: 120000, // Время отмены ордера если он не выполнился (мс)
   STRATEGY: "INERTIA", // Стратегия торговли (INERTIA, REVERSE)
   LEVERAGE: 10, // Торговое плечо (число)
   HISTORY_CHANGES_SIZE: 3, // Количество временных отрезков для отслеживания динамики изменения цены (шт)
-  DYNAMICS_PRICE_CHANGES: 0.4, // Минимальный процент изменения цены относительно прошлой (%)
+  DYNAMICS_PRICE_CHANGES: 0.2, // Минимальный процент изменения цены относительно прошлой (%)
   FIELD: "lastPrice",
   NUMBER_OF_POSITIONS: 10,
   NUMBER_OF_ORDERS: 5,
@@ -118,21 +118,32 @@ const getAmount = ({
 }) => {
   const money = decreaseByPercentage(balance * SETTINGS.LEVERAGE, 6);
   const amount = money / entryPrice;
-  if (entryPrice < 1) {
-    return divideNumber(amount, SETTINGS.NUMBER_OF_ORDERS).map((item) =>
-      Math.round(item)
-    );
-  } else {
-    return divideNumber(amount, SETTINGS.NUMBER_OF_ORDERS).map((item) =>
-      roundToFirstDecimal(item)
-    );
-  }
-};
 
-function roundToFirstDecimal(value: number) {
-  const firstDecimal = Math.floor(value * 10) % 10;
-  return firstDecimal === 0 ? Math.floor(value) : Math.round(value * 10) / 10;
-}
+  // Calculate the number of orders
+  const numberOfOrders = SETTINGS.NUMBER_OF_ORDERS;
+
+  // Initialize the result array
+  const result: number[] = [];
+
+  // Calculate the first amount
+  let currentAmount = amount / (Math.pow(2, numberOfOrders) - 1);
+
+  for (let i = 0; i < numberOfOrders; i++) {
+    // If it's the first element, just push the current amount
+    if (i === 0) {
+      result.push(currentAmount);
+    } else {
+      // Each subsequent amount is double the sum of all previous amounts
+      currentAmount = result.reduce((acc, val) => acc + val, 0) * 2;
+      result.push(currentAmount);
+    }
+  }
+
+  // Round the amounts based on the entry price
+  return result.map((item) =>
+    entryPrice < 1 ? Math.round(item) : roundToFirstDecimal(item)
+  );
+};
 
 const decreaseByPercentage = (value: number, percentage: number): number => {
   if (value < 0 || percentage < 0 || percentage > 100) {
@@ -141,12 +152,10 @@ const decreaseByPercentage = (value: number, percentage: number): number => {
   return value * (1 - percentage / 100);
 };
 
-const divideNumber = (total: number, parts: number): number[] => {
-  if (parts <= 0) throw new Error("Количество частей должно быть больше 0");
-
-  const firstPart = total / (Math.pow(2, parts) - 1);
-  return Array.from({ length: parts }, (_, i) => firstPart * Math.pow(2, i));
-};
+function roundToFirstDecimal(value: number) {
+  const firstDecimal = Math.floor(value * 10) % 10;
+  return firstDecimal === 0 ? Math.floor(value) : Math.round(value * 10) / 10;
+}
 
 interface GetPrices {
   entryPrice: number;
