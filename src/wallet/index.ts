@@ -20,7 +20,7 @@ async function fetchWallet() {
       accountType: "UNIFIED",
       coin: "USDT",
     });
-    if (result?.list.length) {
+    if (result?.list?.length) {
       setWallet(result.list[0]);
     }
 

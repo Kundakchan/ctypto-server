@@ -13,16 +13,21 @@ import { Ticker, watchTicker } from "./ticker";
 import { watchPrice, setTickerToMatrix, getCoinPriceBySymbol } from "./pice";
 import chalk from "chalk";
 import { createOrder } from "./trading";
-import { getPositionsCount, hasPosition, watchPositions } from "./position";
+import {
+  watchPositionsInterval,
+  getPositionsCount,
+  hasPosition,
+  watchPositions,
+} from "./position";
 
 export const SETTINGS = {
-  TIME_CHECK_PRICE: 6000, // Время обновления проверки цены на все монеты (мс)
+  TIME_CHECK_PRICE: 60000, // Время обновления проверки цены на все монеты (мс)
   LIMIT_ORDER_PRICE_VARIATION: 1, // Процент отката цены для лимитной закупки (%)
   TIMER_ORDER_CANCEL: 120000, // Время отмены ордера если он не выполнился (мс)
   STRATEGY: "INERTIA", // Стратегия торговли (INERTIA, REVERSE)
   LEVERAGE: 10, // Торговое плечо (число)
   HISTORY_CHANGES_SIZE: 3, // Количество временных отрезков для отслеживания динамики изменения цены (шт)
-  DYNAMICS_PRICE_CHANGES: 0.1, // Минимальный процент изменения цены относительно прошлой (%)
+  DYNAMICS_PRICE_CHANGES: 0.4, // Минимальный процент изменения цены относительно прошлой (%)
   FIELD: "lastPrice",
   NUMBER_OF_POSITIONS: 10,
   NUMBER_OF_ORDERS: 5,
@@ -33,7 +38,14 @@ watchOrders({
   afterFilled: (order) => {},
 });
 watchPositions({
-  afterFilled: (position) => {},
+  afterFilled: (positions) => {},
+});
+watchPositionsInterval({
+  afterFilled: (positions) => {
+    positions.forEach((position) => {
+      // console.log(`${position.symbol}: PnL: ${position.unrealisedPnl}`);
+    });
+  },
 });
 
 fetchCoins().then(() => {

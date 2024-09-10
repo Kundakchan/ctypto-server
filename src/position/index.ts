@@ -1,6 +1,7 @@
 import { PositionV5 } from "bybit-api";
-import { ws, setHandlerWS } from "../client";
+import { ws, setHandlerWS, client } from "../client";
 import type { Symbol } from "../coins/symbols";
+import chalk from "chalk";
 
 interface Position extends PositionV5 {
   symbol: Symbol;
@@ -56,4 +57,46 @@ const findPositionBySymbol = (symbol: Symbol) => {
 const hasPosition = (symbol: Symbol) => !!findPositionBySymbol(symbol);
 const getPositionsCount = () => positions.length;
 
-export { watchPositions, hasPosition, getPositionsCount };
+const fetchPosition = async () => {
+  try {
+    const result = await client.getPositionInfo({
+      category: "linear",
+      settleCoin: "USDT",
+    });
+
+    if (result.retMsg !== "OK") {
+      console.log(chalk.red(`Ошибка получения позиции: ${result.retMsg}`));
+    }
+
+    return result.result.list;
+  } catch (error) {
+    console.error("Error: fetchPosition", error);
+  }
+};
+
+interface WatchPositionsIntervalParams extends WatchPositionsParams {}
+const watchPositionsInterval = (params: WatchPositionsIntervalParams) => {
+  setTimeout(async () => {
+    const list = await fetchPosition();
+    if (list) {
+      list.forEach((position) => {
+        setPosition(position as Position);
+      });
+
+      const { afterFilled } = params;
+
+      if (afterFilled) {
+        afterFilled(positions);
+      }
+    }
+
+    watchPositionsInterval(params);
+  }, 500);
+};
+
+export {
+  watchPositions,
+  hasPosition,
+  getPositionsCount,
+  watchPositionsInterval,
+};
