@@ -3,6 +3,7 @@ import { type Symbol } from "../coins/symbols";
 import type { Ticker } from "../ticker";
 import { getCoinsKey } from "../coins";
 import chalk from "chalk";
+import { calculatePercentage } from "../utils";
 
 interface Coins extends Partial<Record<Symbol, Ticker>> {}
 export interface MatrixChanges extends Partial<Record<Symbol, Ticker[]>> {}
@@ -173,24 +174,35 @@ interface GetPrices {
   percentage: number;
 }
 const getPrices = ({ entryPrice, side, percentage }: GetPrices) => {
-  const prices = [];
-  let multiplier = 1 + percentage / 100;
+  let multiplier = percentage;
 
-  // Вычисляем первую цену в зависимости от side
   const firstPrice =
-    side === "Sell" ? entryPrice * multiplier : entryPrice / multiplier;
+    side === "Buy"
+      ? entryPrice -
+        calculatePercentage({ target: entryPrice, percent: multiplier / 2 })
+      : entryPrice +
+        calculatePercentage({ target: entryPrice, percent: multiplier / 2 });
 
-  prices.push(firstPrice);
-
-  // Добавляем последующие цены, изменяя их от предыдущего элемента
-  for (let i = 1; i < SETTINGS.NUMBER_OF_ORDERS; i++) {
-    // Например, создадим 5 цен
-    const previousPrice: number = prices[i - 1];
-    const nextPrice =
-      side === "Sell" ? previousPrice * multiplier : previousPrice / multiplier;
-    multiplier = multiplier + 0.01;
-    prices.push(nextPrice);
-  }
+  const prices: number[] = Array.from({
+    length: SETTINGS.NUMBER_OF_ORDERS,
+  }).reduce<number[]>((acc, current, index) => {
+    if (index === 0) {
+      acc.push(firstPrice);
+    } else {
+      const price =
+        side === "Buy"
+          ? acc[index - 1] -
+            calculatePercentage({ target: acc[index - 1], percent: multiplier })
+          : acc[index - 1] +
+            calculatePercentage({
+              target: acc[index - 1],
+              percent: multiplier,
+            });
+      multiplier = multiplier + SETTINGS.PRICE_DIFFERENCE_MULTIPLIER;
+      acc.push(price);
+    }
+    return acc;
+  }, []);
 
   return prices;
 };

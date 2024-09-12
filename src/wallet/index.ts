@@ -1,7 +1,9 @@
 import type { WalletBalanceV5 } from "bybit-api";
 import { client } from "../client";
 import { SETTINGS } from "..";
-import { getPositionsCount } from "../position";
+import { getPositionSymbol } from "../position";
+import { getOrdersSymbol } from "../order";
+import { getAvailableSlots } from "../trading";
 
 interface Wallet extends Partial<Omit<WalletBalanceV5, "coin">> {}
 
@@ -26,27 +28,33 @@ async function fetchWallet() {
       setWallet(result.list[0]);
     }
 
-    return wallet;
+    return getWallet();
   } catch (error) {
     console.log(error);
     throw error;
   }
 }
 
-async function watchWallet() {
-  await fetchWallet();
+interface WatchWalletParams {
+  afterFilled?: (params: Wallet) => void;
+}
+
+async function watchWallet(params: WatchWalletParams) {
+  const result = await fetchWallet();
   setTimeout(() => {
-    watchWallet();
+    watchWallet(params);
   }, 500);
+  const { afterFilled } = params;
+  if (afterFilled) afterFilled(result);
 }
 
 const getCoinPurchaseBalance = () => {
   const wallet = getWallet();
-  if (wallet?.totalMarginBalance) {
-    return (
-      parseFloat(wallet.totalMarginBalance) /
-      (SETTINGS.NUMBER_OF_POSITIONS - getPositionsCount())
-    );
+  const availableSlots = getAvailableSlots();
+  if (wallet?.totalAvailableBalance && availableSlots > 0) {
+    return parseFloat(wallet.totalAvailableBalance) / availableSlots;
+  } else if (availableSlots <= 0) {
+    return 0;
   } else {
     throw new Error("Не удалось получить информацию о балансе");
   }
@@ -54,46 +62,40 @@ const getCoinPurchaseBalance = () => {
 
 const getAmount = ({
   balance,
-  entryPrice,
+  prices,
+  qtyStep,
 }: {
   balance: number;
-  entryPrice: number;
+  prices: number[];
+  qtyStep: number;
 }) => {
-  const money = decreaseByPercentage(balance * SETTINGS.LEVERAGE, 6);
-  const amount = money / entryPrice;
+  const money = balance * SETTINGS.LEVERAGE;
+  const digitsAfterDecimal = qtyStep.toString().split(".")[1]?.length ?? 0;
 
-  // Calculate the number of orders
-  const numberOfOrders = SETTINGS.NUMBER_OF_ORDERS;
+  const test = prices
+    .map((price) => money / price)
+    .map((coin, index) => calculatePowerOfTwo(coin, prices.length - index))
+    .map((coin) => {
+      const value = Math.trunc(coin / qtyStep) * qtyStep;
 
-  // Initialize the result array
-  const result: number[] = [];
+      if (digitsAfterDecimal) {
+        return Math.floor(value * 10) / (10 * digitsAfterDecimal);
+      } else {
+        return Math.floor(value);
+      }
+    });
 
-  // Calculate the first amount
-  let currentAmount = amount / (Math.pow(2, numberOfOrders) - 1);
+  console.log({
+    test,
+    qtyStep,
+    digitsAfterDecimal,
+  });
 
-  for (let i = 0; i < numberOfOrders; i++) {
-    // If it's the first element, just push the current amount
-    if (i === 0) {
-      result.push(currentAmount);
-    } else {
-      // Each subsequent amount is double the sum of all previous amounts
-      currentAmount = result.reduce((acc, val) => acc + val, 0) * 2;
-      result.push(currentAmount);
-    }
-  }
-
-  // Round the amounts based on the entry price
-  return result.map((item) =>
-    entryPrice < 1 ? Math.round(item) : roundToFirstDecimal(item)
-  );
+  return test;
 };
 
-const decreaseByPercentage = (value: number, percentage: number): number => {
-  if (value < 0 || percentage < 0 || percentage > 100) {
-    throw new Error("Некорректные входные данные.");
-  }
-  return value * (1 - percentage / 100);
-};
+const calculatePowerOfTwo = (number: number, power: number): number =>
+  number / 2 ** power;
 
 function roundToFirstDecimal(value: number) {
   const firstDecimal = Math.floor(value * 10) % 10;

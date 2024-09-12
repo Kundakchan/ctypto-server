@@ -3,7 +3,7 @@ import { ws, setHandlerWS, client } from "../client";
 import type { Symbol } from "../coins/symbols";
 import chalk from "chalk";
 
-interface Position extends PositionV5 {
+export interface Position extends PositionV5 {
   symbol: Symbol;
 }
 let positions: Position[] = [];
@@ -55,7 +55,9 @@ const findPositionBySymbol = (symbol: Symbol) => {
 };
 
 const hasPosition = (symbol: Symbol) => !!findPositionBySymbol(symbol);
-const getPositionsCount = () => positions.length;
+const getPositionSymbol = () =>
+  getPositions().map((position) => position.symbol);
+const getPositions = () => positions;
 
 const fetchPosition = async () => {
   try {
@@ -97,6 +99,7 @@ const watchPositionsInterval = (params: WatchPositionsIntervalParams) => {
 export {
   watchPositions,
   hasPosition,
-  getPositionsCount,
+  getPositions,
   watchPositionsInterval,
+  getPositionSymbol,
 };

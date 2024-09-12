@@ -1,6 +1,6 @@
 import type { AccountOrderV5, OrderStatusV5 } from "bybit-api";
 import { ws, setHandlerWS } from "../client";
-import { symbols, type Symbol } from "../coins/symbols";
+import type { Symbol } from "../coins/symbols";
 import { hasPosition } from "../position";
 import chalk from "chalk";
 import { SETTINGS } from "..";
@@ -13,7 +13,7 @@ interface ActionOrder {
   (params: Order): void;
 }
 interface GetOrders {
-  (params: Order, field: keyof Order): Order[];
+  (field: keyof Order, value: Order[keyof Order]): Order[];
 }
 interface WatchOrdersParams {
   afterFilled?: (params: Order[]) => void;
@@ -57,8 +57,9 @@ const setOrder: ActionOrder = (params) => {
 const removeOrder: ActionOrder = (params) => {
   orders = orders.filter((order) => order.orderId !== params.orderId);
 };
-const getOrders: GetOrders = (params, field = "orderId") => {
-  return orders.filter((order) => order[field] === params[field]);
+const getOrders: GetOrders = (field = "orderId", value) => {
+  console.log({ field, value });
+  return orders.filter((order) => order[field] === value);
 };
 
 const actionsMap: ActionsMap = {
@@ -89,7 +90,7 @@ const setTimerClearOrder = (order: Order) => {
   ordersToDelete[order.symbol] = setTimeout(() => {
     if (!hasPosition(order.symbol)) {
       let intervalTimeForCancelOrder = 0;
-      getOrders(order, "symbol").forEach((order) => {
+      getOrders("symbol", order.symbol).forEach((order) => {
         setTimeout(async () => {
           await cancelOrder({
             symbol: order.symbol,
@@ -103,4 +104,12 @@ const setTimerClearOrder = (order: Order) => {
     }
   }, 60000 * SETTINGS.TIMER_ORDER_CANCEL);
 };
-export { watchOrders, hasOrder, setTimerClearOrder };
+
+const getOrdersSymbol = () => [...new Set(orders.map((order) => order.symbol))];
+export {
+  watchOrders,
+  hasOrder,
+  setTimerClearOrder,
+  getOrders,
+  getOrdersSymbol,
+};

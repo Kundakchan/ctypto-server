@@ -1,7 +1,9 @@
 import { client } from "../client";
 import type { Symbol } from "../coins/symbols";
-import type { Side } from "..";
+import { SETTINGS, type Side } from "..";
 import { PositionV5 } from "bybit-api";
+import { getPositions, getPositionSymbol } from "../position";
+import { getOrders, getOrdersSymbol } from "../order";
 export interface CreateOrderParams {
   symbol: Symbol;
   side: Side;
@@ -71,4 +73,32 @@ export const closePosition = async (position: PositionV5) => {
   } catch (error) {
     console.error(error);
   }
+};
+
+export const closeAllPosition = async () => {
+  try {
+    const positions = await getPositions(); // Получаем позиции
+
+    for (const position of positions) {
+      const result = await closePosition(position); // Закрываем позицию
+
+      if (result) {
+        // Проверяем, успешно ли закрыта позиция
+        const orders = await getOrders("symbol", position.symbol); // Получаем заказы
+
+        for (const order of orders) {
+          await cancelOrder({ symbol: order.symbol, orderId: order.orderId }); // Отменяем заказ
+        }
+      }
+    }
+  } catch (error) {
+    console.error("Ошибка закрытия всех позиций", error);
+  }
+};
+
+export const getAvailableSlots = () => {
+  const position = getPositionSymbol();
+  const orders = getOrdersSymbol();
+  const positionAndOrders = [...new Set([...position, ...orders])];
+  return SETTINGS.NUMBER_OF_POSITIONS - positionAndOrders.length;
 };
