@@ -2,6 +2,7 @@ import { PositionV5 } from "bybit-api";
 import { ws, setHandlerWS, client } from "../client";
 import type { Symbol } from "../coins/symbols";
 import chalk from "chalk";
+import { SETTINGS } from "..";
 
 export interface Position extends PositionV5 {
   symbol: Symbol;
@@ -96,10 +97,20 @@ const watchPositionsInterval = (params: WatchPositionsIntervalParams) => {
   }, 500);
 };
 
+const isPositionPnL = (position: Position, pnl: number) => {
+  const { avgPrice, size, unrealisedPnl } = position;
+  const pnlAsPercent =
+    (parseFloat(unrealisedPnl) /
+      ((parseFloat(size) * parseFloat(avgPrice)) / SETTINGS.LEVERAGE)) *
+    100;
+  return pnlAsPercent >= pnl;
+};
+
 export {
   watchPositions,
   hasPosition,
   getPositions,
   watchPositionsInterval,
   getPositionSymbol,
+  isPositionPnL,
 };

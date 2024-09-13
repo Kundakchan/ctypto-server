@@ -4,6 +4,8 @@ import { SETTINGS } from "..";
 import { getPositionSymbol } from "../position";
 import { getOrdersSymbol } from "../order";
 import { getAvailableSlots } from "../trading";
+import { getCoinBySymbol } from "../coins";
+import type { Symbol } from "../coins/symbols";
 
 interface Wallet extends Partial<Omit<WalletBalanceV5, "coin">> {}
 
@@ -72,7 +74,7 @@ const getAmount = ({
   const money = balance * SETTINGS.LEVERAGE;
   const digitsAfterDecimal = qtyStep.toString().split(".")[1]?.length ?? 0;
 
-  const test = prices
+  return prices
     .map((price) => money / price)
     .map((coin, index) => calculatePowerOfTwo(coin, prices.length - index))
     .map((coin) => {
@@ -84,22 +86,35 @@ const getAmount = ({
         return Math.floor(value);
       }
     });
-
-  console.log({
-    test,
-    qtyStep,
-    digitsAfterDecimal,
-  });
-
-  return test;
 };
 
 const calculatePowerOfTwo = (number: number, power: number): number =>
   number / 2 ** power;
 
-function roundToFirstDecimal(value: number) {
-  const firstDecimal = Math.floor(value * 10) % 10;
-  return firstDecimal === 0 ? Math.floor(value) : Math.round(value * 10) / 10;
-}
+const canBuyCoins = ({
+  amounts,
+  symbol,
+}: {
+  amounts: number[];
+  symbol: Symbol;
+}) => {
+  const instrumentsInfo = getCoinBySymbol(symbol);
+  if (instrumentsInfo) {
+    const { lotSizeFilter } = instrumentsInfo;
+    return amounts.every(
+      (num) =>
+        num >= parseFloat(lotSizeFilter.minOrderQty) &&
+        num <= parseFloat(lotSizeFilter.maxOrderQty)
+    );
+  } else {
+    return false;
+  }
+};
 
-export { watchWallet, getWallet, getCoinPurchaseBalance, getAmount };
+export {
+  watchWallet,
+  getWallet,
+  getCoinPurchaseBalance,
+  getAmount,
+  canBuyCoins,
+};
