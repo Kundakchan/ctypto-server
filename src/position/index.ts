@@ -94,7 +94,7 @@ const watchPositionsInterval = (params: WatchPositionsIntervalParams) => {
     }
 
     watchPositionsInterval(params);
-  }, 500);
+  }, 0);
 };
 
 const isPositionPnL = (position: Position, pnl: number) => {

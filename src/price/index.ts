@@ -179,9 +179,9 @@ const getPrices = ({ entryPrice, side, percentage }: GetPrices) => {
   const firstPrice =
     side === "Buy"
       ? entryPrice -
-        calculatePercentage({ target: entryPrice, percent: multiplier / 2 })
+        calculatePercentage({ target: entryPrice, percent: multiplier / 5 })
       : entryPrice +
-        calculatePercentage({ target: entryPrice, percent: multiplier / 2 });
+        calculatePercentage({ target: entryPrice, percent: multiplier / 5 });
 
   const prices: number[] = Array.from({
     length: SETTINGS.NUMBER_OF_ORDERS,
@@ -198,7 +198,12 @@ const getPrices = ({ entryPrice, side, percentage }: GetPrices) => {
               target: acc[index - 1],
               percent: multiplier,
             });
-      multiplier = multiplier + SETTINGS.PRICE_DIFFERENCE_MULTIPLIER;
+      multiplier =
+        multiplier +
+        calculatePercentage({
+          target: multiplier,
+          percent: SETTINGS.PRICE_DIFFERENCE_MULTIPLIER,
+        });
       acc.push(price);
     }
     return acc;

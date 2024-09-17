@@ -58,7 +58,6 @@ const removeOrder: ActionOrder = (params) => {
   orders = orders.filter((order) => order.orderId !== params.orderId);
 };
 const getOrders: GetOrders = (field = "orderId", value) => {
-  console.log({ field, value });
   return orders.filter((order) => order[field] === value);
 };
 

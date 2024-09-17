@@ -1,7 +1,6 @@
 import { client } from "../client";
 import type { Symbol } from "../coins/symbols";
 import { BuyCoinParams, SETTINGS, type Side } from "..";
-import { PositionV5 } from "bybit-api";
 import {
   getPositions,
   getPositionSymbol,
@@ -10,6 +9,17 @@ import {
 } from "../position";
 import { getOrders, getOrdersSymbol } from "../order";
 import chalk from "chalk";
+import { getCoinPriceBySymbol } from "../price";
+import { calculatePercentage } from "../utils";
+
+interface StopOrderCollectionPosition extends Position {
+  stopPrice: number;
+  loading: boolean;
+}
+interface StopOrderCollection
+  extends Partial<Record<Symbol, StopOrderCollectionPosition>> {}
+const stopOrderCollection: StopOrderCollection = {};
+
 export interface CreateOrderParams {
   symbol: Symbol;
   side: Side;
@@ -62,7 +72,7 @@ export const cancelOrder = async ({
   }
 };
 
-export const closePosition = async (position: PositionV5) => {
+export const closePosition = async (position: Position) => {
   try {
     const result = await client.submitOrder({
       category: "linear",
@@ -173,3 +183,59 @@ export const createRecursiveOrder = async ({
     console.error(chalk.red("Ошибка при создании ордера"), error);
   }
 };
+
+const setSlidingStopOrder = async (positions: Position[]) => {
+  for (const position of positions) {
+    const orders = getOrders("symbol", position.symbol).filter(
+      (order) => order.side === position.side
+    );
+
+    if (orders.length) continue;
+
+    const currentPrice = getCoinPriceBySymbol(position.symbol)?.[
+      SETTINGS.FIELD
+    ];
+
+    if (!currentPrice) continue;
+
+    const parsedCurrentPrice = parseFloat(currentPrice);
+    const stopPriceOffset = calculatePercentage({
+      target: parsedCurrentPrice,
+      percent: SETTINGS.STOP_LOSS,
+    });
+
+    const newStopPrice =
+      position.side === "Buy"
+        ? parsedCurrentPrice - stopPriceOffset
+        : parsedCurrentPrice + stopPriceOffset;
+
+    if (stopOrderCollection[position.symbol]) {
+      const existingStopPrice = (
+        stopOrderCollection[position.symbol] as StopOrderCollectionPosition
+      ).stopPrice;
+
+      if (existingStopPrice - newStopPrice > 0) {
+        console.log(`${position.symbol}: обновление стоп лосса`, newStopPrice);
+        stopOrderCollection[position.symbol] = {
+          ...position,
+          stopPrice: newStopPrice,
+          loading: false,
+        };
+      }
+    } else {
+      console.log(`${position.symbol}: добавление стоп лосса`, newStopPrice);
+      stopOrderCollection[position.symbol] = {
+        ...position,
+        stopPrice: newStopPrice,
+        loading: false,
+      };
+    }
+  }
+};
+
+const getStopOrderBySymbol = (symbol: Symbol) => stopOrderCollection[symbol];
+
+const removeSlidingStopOrder = (symbol: Symbol) =>
+  delete stopOrderCollection[symbol];
+
+export { setSlidingStopOrder, getStopOrderBySymbol, removeSlidingStopOrder };
