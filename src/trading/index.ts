@@ -7,7 +7,7 @@ import {
   isPositionPnL,
   Position,
 } from "../position";
-import { getOrders, getOrdersSymbol } from "../order";
+import { addCreatedOrderStatus, getOrders, getOrdersSymbol } from "../order";
 import chalk from "chalk";
 import { getCoinPriceBySymbol } from "../price";
 import { calculatePercentage } from "../utils";
@@ -107,7 +107,10 @@ export const closeAllPosition = async () => {
         const orders = await getOrders("symbol", position.symbol); // Получаем заказы
 
         for (const order of orders) {
-          await cancelOrder({ symbol: order.symbol, orderId: order.orderId }); // Отменяем заказ
+          await cancelOrder({
+            symbol: order.symbol,
+            orderId: order.orderId as string,
+          }); // Отменяем заказ
         }
       }
     }
@@ -165,6 +168,12 @@ export const createRecursiveOrder = async ({
       chalk.green(`Ордер ${active.symbol} успешно создан, index: ${index}`)
     );
     console.table(result.result);
+
+    addCreatedOrderStatus({
+      id: result.result.orderId,
+      symbol: active.symbol,
+      status: "open",
+    });
 
     // Рекурсивный вызов через 300 мс
     setTimeout(() => {
@@ -351,7 +360,10 @@ const stopPosition = async (ticker: Ticker) => {
     const orders = getOrders("symbol", stopOrder.symbol);
 
     for (const order of orders) {
-      await cancelOrder({ symbol: order.symbol, orderId: order.orderId });
+      await cancelOrder({
+        symbol: order.symbol,
+        orderId: order.orderId as string,
+      });
     }
 
     if (result?.retMsg === "OK") {

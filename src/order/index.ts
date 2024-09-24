@@ -6,8 +6,9 @@ import chalk from "chalk";
 import { SETTINGS } from "..";
 import { cancelOrder } from "../trading";
 
-export interface Order extends AccountOrderV5 {
+export interface Order extends Partial<AccountOrderV5> {
   symbol: Symbol;
+  status: "open" | "cancel";
 }
 interface ActionOrder {
   (params: Order): void;
@@ -17,6 +18,7 @@ interface GetOrders {
 }
 interface WatchOrdersParams {
   afterFilled?: (params: Order[]) => void;
+  beforeFilled?: (params: Order[]) => void;
 }
 
 interface ActionsMap extends Partial<Record<OrderStatusV5, ActionOrder>> {}
@@ -29,15 +31,20 @@ function watchOrders(params: WatchOrdersParams) {
   setHandlerWS({
     topic: "order",
     handler: (message) => {
+      const { afterFilled, beforeFilled } = params;
       const data = message.data as unknown as Order[];
+
+      if (beforeFilled) {
+        beforeFilled(data);
+      }
+
       data.forEach((order) => {
-        const action = actionsMap[order.orderStatus];
+        const action = actionsMap[order.orderStatus as OrderStatusV5];
         if (action) {
           action(order);
         }
       });
 
-      const { afterFilled } = params;
       if (afterFilled) afterFilled(data);
     },
   });
@@ -50,7 +57,7 @@ const setOrder: ActionOrder = (params) => {
   if (index === -1) {
     orders.push(params);
   } else {
-    orders[index] = params;
+    orders[index] = { ...orders[index], ...params };
   }
 };
 
@@ -93,7 +100,7 @@ const setTimerClearOrder = (order: Order) => {
         setTimeout(async () => {
           await cancelOrder({
             symbol: order.symbol,
-            orderId: order.orderId,
+            orderId: order.orderId as string,
           });
         }, intervalTimeForCancelOrder);
         intervalTimeForCancelOrder = intervalTimeForCancelOrder + 500;
@@ -106,7 +113,21 @@ const setTimerClearOrder = (order: Order) => {
 
 const getOrdersSymbol = () => [...new Set(orders.map((order) => order.symbol))];
 
+interface AddCreatedOrderStatusParams {
+  id: string;
+  status: Order["status"];
+  symbol: Symbol;
+}
+const addCreatedOrderStatus = ({
+  id,
+  symbol,
+  status,
+}: AddCreatedOrderStatusParams) => {
+  orders.push({ orderId: id, symbol, status });
+};
+
 export {
+  addCreatedOrderStatus,
   watchOrders,
   hasOrder,
   setTimerClearOrder,

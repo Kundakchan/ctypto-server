@@ -3,6 +3,10 @@ import { ws, setHandlerWS, client } from "../client";
 import type { Symbol } from "../coins/symbols";
 import chalk from "chalk";
 import { SETTINGS } from "..";
+import { createOrder, getStopOrderBySymbol } from "../trading";
+import { calculateMarkupPrice } from "../utils";
+import { addCreatedOrderStatus } from "../order";
+import { getCoinPriceBySymbol } from "../price";
 
 export interface Position extends PositionV5 {
   symbol: Symbol;
@@ -106,7 +110,63 @@ const isPositionPnL = (position: Position, pnl: number) => {
   return pnlAsPercent >= pnl;
 };
 
+interface TimerForSuccessfulClosingPosition
+  extends Partial<Record<Symbol, ReturnType<typeof setTimeout>>> {}
+const timerForSuccessfulClosingPosition: TimerForSuccessfulClosingPosition = {};
+
+const setTimerForSuccessfulClosingPosition = (positions: Position[]) => {
+  positions.forEach((position) => {
+    if (timerForSuccessfulClosingPosition[position.symbol]) return;
+
+    timerForSuccessfulClosingPosition[position.symbol] = setTimeout(() => {
+      if (getStopOrderBySymbol(position.symbol)) return;
+
+      setOrderForSuccessfulClosingPosition(position);
+    }, 1 * 60000); // TODO: Вынести время в константу
+  });
+};
+
+const setOrderForSuccessfulClosingPosition = async (position: Position) => {
+  const price = calculateMarkupPrice({
+    avgPrice: parseFloat(position.avgPrice),
+    leverage: parseFloat(position.leverage ?? SETTINGS.LEVERAGE.toString()),
+    side: position.side,
+    pnl: 2, // TODO: Вынести pnl в константу
+  });
+
+  const result = await createOrder({
+    symbol: position.symbol,
+    side: position.side === "Buy" ? "Sell" : "Buy",
+    amount: parseFloat(position.size),
+    price: price,
+    timeInForce: "GTC",
+  });
+
+  // Проверяем результат
+  if (!result || result.retMsg !== "OK") {
+    console.error(
+      chalk.red(
+        `Ошибка создания ордера на закрытия позиции ${position.symbol}: ${
+          result?.retMsg || "Неизвестная ошибка"
+        }`
+      )
+    );
+    return;
+  }
+
+  console.log(
+    chalk.green(`Ордер на закрытия позиции ${position.symbol} успешно создан`)
+  );
+
+  addCreatedOrderStatus({
+    id: result.result.orderId,
+    symbol: position.symbol,
+    status: "cancel",
+  });
+};
+
 export {
+  setTimerForSuccessfulClosingPosition,
   watchPositions,
   hasPosition,
   getPositions,
