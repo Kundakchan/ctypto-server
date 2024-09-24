@@ -241,48 +241,65 @@ const removeSlidingStopOrder = (symbol: Symbol) =>
   delete stopOrderCollection[symbol];
 
 const setTakeProfit = async (positions: Position[]) => {
-  for (const position of positions) {
-    if (!isPositionPnL(position, SETTINGS.TAKE_PROFIT_TRIGGER_PNL)) continue;
+  // Проходим по каждой позиции
+  positions.forEach((position) => {
+    // Проверяем, достиг ли PnL значения, чтобы сработал триггер тейк-профита
+    if (!isPositionPnL(position, SETTINGS.TAKE_PROFIT_TRIGGER_PNL)) return;
 
-    const currentPrice = getCoinPriceBySymbol(position.symbol)?.[
-      SETTINGS.FIELD
-    ];
+    // Получаем текущую цену актива по символу
+    const currentPrice = parseFloat(
+      getCoinPriceBySymbol(position.symbol)?.[SETTINGS.FIELD] || ""
+    );
+    // Если цена не найдена, пропускаем эту позицию
+    if (!currentPrice) return;
 
-    if (!currentPrice) continue;
-    const parsedCurrentPrice = parseFloat(currentPrice);
-
-    const stopPriceOffset = calculatePercentage({
-      target: parsedCurrentPrice,
+    // Рассчитываем значение тейк-профита как процент от текущей цены
+    const takeProfitPriceOffset = calculatePercentage({
+      target: currentPrice,
       percent: SETTINGS.TAKE_PROFIT_GAP,
     });
 
-    const newStopPrice =
+    // Вычисляем новую цену для тейк-профита в зависимости от направления позиции (покупка или продажа)
+    const newTakeProfitPrice =
       position.side === "Buy"
-        ? parsedCurrentPrice - stopPriceOffset
-        : parsedCurrentPrice + stopPriceOffset;
+        ? currentPrice - takeProfitPriceOffset // Для покупки увеличиваем цену
+        : currentPrice + takeProfitPriceOffset; // Для продажи уменьшаем цену
 
-    if (stopOrderCollection[position.symbol]) {
-      const existingStopPrice = (
-        stopOrderCollection[position.symbol] as StopOrderCollectionPosition
-      ).stopPrice;
+    // Получаем существующую тейк-профит цену для символа из коллекции (если она есть)
+    const existingStop = stopOrderCollection[
+      position.symbol
+    ] as StopOrderCollectionPosition;
 
-      if (existingStopPrice - newStopPrice > 0) {
-        console.log(`${position.symbol}: обновление take profit`, newStopPrice);
-        stopOrderCollection[position.symbol] = {
-          ...position,
-          stopPrice: newStopPrice,
-          loading: false,
-        };
-      }
-    } else {
-      console.log(`${position.symbol}: добавление take profit`, newStopPrice);
+    // Определяем, нужно ли обновить тейк-профит
+    const shouldUpdate =
+      position.side === "Buy"
+        ? newTakeProfitPrice > existingStop?.stopPrice // Для покупки обновляем, если новая цена меньше
+        : newTakeProfitPrice < existingStop?.stopPrice; // Для продажи обновляем, если новая цена больше
+
+    if (existingStop && shouldUpdate) {
+      // Если тейк-профит уже есть и его нужно обновить
+      console.log(
+        `${position.symbol}: обновление тейк-профита`,
+        newTakeProfitPrice
+      );
       stopOrderCollection[position.symbol] = {
         ...position,
-        stopPrice: newStopPrice,
+        stopPrice: newTakeProfitPrice,
+        loading: false,
+      };
+    } else if (!existingStop) {
+      // Если тейк-профита для позиции еще нет, создаем новый
+      console.log(
+        `${position.symbol}: добавление тейк-профита`,
+        newTakeProfitPrice
+      );
+      stopOrderCollection[position.symbol] = {
+        ...position,
+        stopPrice: newTakeProfitPrice,
         loading: false,
       };
     }
-  }
+  });
 };
 
 interface PositionClosingByTimer
