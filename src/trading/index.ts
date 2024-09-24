@@ -176,44 +176,55 @@ export const createRecursiveOrder = async ({
 };
 
 const setSlidingStopOrder = async (positions: Position[]) => {
-  for (const position of positions) {
-    const orders = getOrders("symbol", position.symbol).filter(
+  // Проходим по каждой позиции
+  positions.forEach((position) => {
+    // Проверяем, есть ли активные ордера по символу и стороне (Buy/Sell)
+    const existingOrders = getOrders("symbol", position.symbol).some(
       (order) => order.side === position.side
     );
+    // Если есть активные ордера, пропускаем эту позицию
+    if (existingOrders) return;
 
-    if (orders.length) continue;
+    // Получаем текущую цену актива по символу
+    const currentPrice = parseFloat(
+      getCoinPriceBySymbol(position.symbol)?.[SETTINGS.FIELD] || ""
+    );
+    // Если цена не найдена, пропускаем эту позицию
+    if (!currentPrice) return;
 
-    const currentPrice = getCoinPriceBySymbol(position.symbol)?.[
-      SETTINGS.FIELD
-    ];
-
-    if (!currentPrice) continue;
-
-    const parsedCurrentPrice = parseFloat(currentPrice);
+    // Рассчитываем значение стоп-лосса как процент от текущей цены
     const stopPriceOffset = calculatePercentage({
-      target: parsedCurrentPrice,
+      target: currentPrice,
       percent: SETTINGS.STOP_LOSS,
     });
 
+    // Вычисляем новую цену для стоп-лосса в зависимости от направления позиции (покупка или продажа)
     const newStopPrice =
       position.side === "Buy"
-        ? parsedCurrentPrice - stopPriceOffset
-        : parsedCurrentPrice + stopPriceOffset;
+        ? currentPrice - stopPriceOffset // Для покупки уменьшаем цену
+        : currentPrice + stopPriceOffset; // Для продажи увеличиваем цену
 
-    if (stopOrderCollection[position.symbol]) {
-      const existingStopPrice = (
-        stopOrderCollection[position.symbol] as StopOrderCollectionPosition
-      ).stopPrice;
+    // Получаем существующую стоп-лосс цену для символа из коллекции (если она есть)
+    const existingStop = stopOrderCollection[
+      position.symbol
+    ] as StopOrderCollectionPosition;
 
-      if (existingStopPrice - newStopPrice > 0) {
-        console.log(`${position.symbol}: обновление стоп лосса`, newStopPrice);
-        stopOrderCollection[position.symbol] = {
-          ...position,
-          stopPrice: newStopPrice,
-          loading: false,
-        };
-      }
-    } else {
+    // Определяем, нужно ли обновить стоп-лосс
+    const shouldUpdate =
+      position.side === "Buy"
+        ? newStopPrice > existingStop?.stopPrice // Для покупки обновляем, если новая цена больше
+        : newStopPrice < existingStop?.stopPrice; // Для продажи обновляем, если новая цена меньше
+
+    if (existingStop && shouldUpdate) {
+      // Если стоп-лосс уже есть и его нужно обновить
+      console.log(`${position.symbol}: обновление стоп лосса`, newStopPrice);
+      stopOrderCollection[position.symbol] = {
+        ...position,
+        stopPrice: newStopPrice,
+        loading: false,
+      };
+    } else if (!existingStop) {
+      // Если стоп-лосса для позиции еще нет, создаем новый
       console.log(`${position.symbol}: добавление стоп лосса`, newStopPrice);
       stopOrderCollection[position.symbol] = {
         ...position,
@@ -221,7 +232,7 @@ const setSlidingStopOrder = async (positions: Position[]) => {
         loading: false,
       };
     }
-  }
+  });
 };
 
 const getStopOrderBySymbol = (symbol: Symbol) => stopOrderCollection[symbol];
