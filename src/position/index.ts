@@ -94,7 +94,7 @@ const watchPositionsInterval = (params: WatchPositionsIntervalParams) => {
     }
 
     watchPositionsInterval(params);
-  }, 0);
+  }, 300);
 };
 
 const isPositionPnL = (position: Position, pnl: number) => {
@@ -113,4 +113,5 @@ export {
   watchPositionsInterval,
   getPositionSymbol,
   isPositionPnL,
+  findPositionBySymbol,
 };

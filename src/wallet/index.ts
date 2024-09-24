@@ -32,8 +32,8 @@ async function fetchWallet() {
 
     return getWallet();
   } catch (error) {
-    console.log(error);
-    throw error;
+    console.error(`Ошибка получения данных кошелька: ${error}`);
+    return;
   }
 }
 
@@ -47,7 +47,7 @@ async function watchWallet(params: WatchWalletParams) {
     watchWallet(params);
   }, 500);
   const { afterFilled } = params;
-  if (afterFilled) afterFilled(result);
+  if (afterFilled && result) afterFilled(result);
 }
 
 const getCoinPurchaseBalance = () => {

@@ -105,6 +105,7 @@ const setTimerClearOrder = (order: Order) => {
 };
 
 const getOrdersSymbol = () => [...new Set(orders.map((order) => order.symbol))];
+
 export {
   watchOrders,
   hasOrder,

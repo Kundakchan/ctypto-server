@@ -1,5 +1,5 @@
 import { client } from "../client";
-import type { Symbol } from "../coins/symbols";
+import { type Symbol } from "../coins/symbols";
 import { BuyCoinParams, SETTINGS, type Side } from "..";
 import {
   getPositions,
@@ -11,6 +11,8 @@ import { getOrders, getOrdersSymbol } from "../order";
 import chalk from "chalk";
 import { getCoinPriceBySymbol } from "../price";
 import { calculatePercentage } from "../utils";
+import { OrderTimeInForceV5 } from "bybit-api";
+import { Ticker } from "../ticker";
 
 interface StopOrderCollectionPosition extends Position {
   stopPrice: number;
@@ -25,6 +27,7 @@ export interface CreateOrderParams {
   side: Side;
   amount: number;
   price: number;
+  timeInForce?: OrderTimeInForceV5;
 }
 
 export function createOrder({
@@ -32,6 +35,7 @@ export function createOrder({
   side,
   amount,
   price,
+  timeInForce = "PostOnly",
 }: CreateOrderParams) {
   return client
     .submitOrder({
@@ -41,7 +45,7 @@ export function createOrder({
       qty: amount.toString(),
       price: price.toString(),
       orderType: "Limit",
-      timeInForce: "PostOnly",
+      timeInForce: timeInForce,
     })
     .then((result) => {
       return result;
@@ -117,19 +121,6 @@ export const getAvailableSlots = () => {
   const orders = getOrdersSymbol();
   const positionAndOrders = [...new Set([...position, ...orders])];
   return SETTINGS.NUMBER_OF_POSITIONS - positionAndOrders.length;
-};
-
-export const positionSuccessClose = async (positions: Position[]) => {
-  for (const position of positions) {
-    if (isPositionPnL(position, SETTINGS.UNREALIZED_PNL)) {
-      await closePosition(position);
-
-      const orders = await getOrders("symbol", position.symbol);
-      for (const order of orders) {
-        await cancelOrder({ symbol: order.symbol, orderId: order.orderId });
-      }
-    }
-  }
 };
 
 export const createRecursiveOrder = async ({
@@ -238,4 +229,120 @@ const getStopOrderBySymbol = (symbol: Symbol) => stopOrderCollection[symbol];
 const removeSlidingStopOrder = (symbol: Symbol) =>
   delete stopOrderCollection[symbol];
 
-export { setSlidingStopOrder, getStopOrderBySymbol, removeSlidingStopOrder };
+const setTakeProfit = async (positions: Position[]) => {
+  for (const position of positions) {
+    if (!isPositionPnL(position, SETTINGS.TAKE_PROFIT_TRIGGER_PNL)) continue;
+
+    const currentPrice = getCoinPriceBySymbol(position.symbol)?.[
+      SETTINGS.FIELD
+    ];
+
+    if (!currentPrice) continue;
+    const parsedCurrentPrice = parseFloat(currentPrice);
+
+    const stopPriceOffset = calculatePercentage({
+      target: parsedCurrentPrice,
+      percent: SETTINGS.TAKE_PROFIT_GAP,
+    });
+
+    const newStopPrice =
+      position.side === "Buy"
+        ? parsedCurrentPrice - stopPriceOffset
+        : parsedCurrentPrice + stopPriceOffset;
+
+    if (stopOrderCollection[position.symbol]) {
+      const existingStopPrice = (
+        stopOrderCollection[position.symbol] as StopOrderCollectionPosition
+      ).stopPrice;
+
+      if (existingStopPrice - newStopPrice > 0) {
+        console.log(`${position.symbol}: обновление take profit`, newStopPrice);
+        stopOrderCollection[position.symbol] = {
+          ...position,
+          stopPrice: newStopPrice,
+          loading: false,
+        };
+      }
+    } else {
+      console.log(`${position.symbol}: добавление take profit`, newStopPrice);
+      stopOrderCollection[position.symbol] = {
+        ...position,
+        stopPrice: newStopPrice,
+        loading: false,
+      };
+    }
+  }
+};
+
+interface PositionClosingByTimer
+  extends Partial<Record<Symbol, ReturnType<typeof setTimeout>>> {}
+const positionClosingByTimer: PositionClosingByTimer = {};
+
+interface UpdateOrder {
+  (params: {
+    symbol: Symbol;
+    orderId: string;
+    qty: number;
+    price: number;
+  }): ReturnType<typeof client.amendOrder>;
+}
+const updateOrder: UpdateOrder = async ({ symbol, orderId, qty, price }) => {
+  return await client.amendOrder({
+    category: "linear",
+    symbol: symbol,
+    orderId: orderId,
+    qty: qty.toString(),
+    price: price.toString(),
+  });
+};
+
+const stopPosition = async (ticker: Ticker) => {
+  const stopOrder = getStopOrderBySymbol(ticker?.symbol);
+  const currentPriceStr = ticker?.[SETTINGS.FIELD];
+
+  if (!stopOrder || typeof currentPriceStr !== "string") return;
+
+  if (stopOrder.loading) {
+    console.log(chalk.yellow("Идёт процесс закрытия позиции по стоп лоссу"));
+    return;
+  }
+
+  const currentPrice = parseFloat(currentPriceStr);
+
+  if (isNaN(currentPrice)) return;
+
+  const isTriggerConditionMet =
+    stopOrder.side === "Buy"
+      ? currentPrice <= stopOrder.stopPrice
+      : currentPrice >= stopOrder.stopPrice;
+
+  if (isTriggerConditionMet) {
+    stopOrder.loading = true;
+    const result = await closePosition(stopOrder);
+
+    const orders = getOrders("symbol", stopOrder.symbol);
+
+    for (const order of orders) {
+      await cancelOrder({ symbol: order.symbol, orderId: order.orderId });
+    }
+
+    if (result?.retMsg === "OK") {
+      console.log(
+        chalk.green(`Позиция: ${stopOrder.symbol} закрыто по стоп-лосу`)
+      );
+      removeSlidingStopOrder(stopOrder.symbol);
+    } else {
+      console.error(`Ошибка закрытия позиции по стоп-лосу: ${result?.retMsg}`);
+      stopOrder.loading = false;
+    }
+  }
+};
+
+export {
+  updateOrder,
+  setSlidingStopOrder,
+  getStopOrderBySymbol,
+  removeSlidingStopOrder,
+  setTakeProfit,
+  stopPosition,
+};

@@ -20,13 +20,11 @@ import {
 } from "./price";
 import chalk from "chalk";
 import {
-  closePosition,
   createRecursiveOrder,
   getAvailableSlots,
-  getStopOrderBySymbol,
-  positionSuccessClose,
-  removeSlidingStopOrder,
   setSlidingStopOrder,
+  setTakeProfit,
+  stopPosition,
 } from "./trading";
 import {
   watchPositionsInterval,
@@ -47,13 +45,14 @@ export const SETTINGS = {
   TIMER_ORDER_CANCEL: 15, // Время отмены ордеров если он не выполнился (мин)
   LEVERAGE: 10, // Торговое плечо (число)
   HISTORY_CHANGES_SIZE: 4, // Количество временных отрезков для отслеживания динамики изменения цены (шт)
-  DYNAMICS_PRICE_CHANGES: 0.3, // Минимальный процент изменения цены относительно прошлого (%)
+  DYNAMICS_PRICE_CHANGES: 0.1, // Минимальный процент изменения цены относительно прошлого (%)
   FIELD: "lastPrice", // Поле, содержащее цену монеты
   NUMBER_OF_POSITIONS: 3, // Количество закупаемых монет (шт)
   NUMBER_OF_ORDERS: 5, // Количество создаваемых ордеров для каждой монеты (шт)
   PRICE_DIFFERENCE_MULTIPLIER: 100, // На сколько процентов будет увеличен процент разницы между ценами (%)
-  UNREALIZED_PNL: 6, // Нереализованные pnl для закрытия позиции
-  STOP_LOSS: 0.1,
+  STOP_LOSS: 1, // Процент от наилучшей цены позиции для установки стоп лосса после выполнения последнего ордера на закупку позиции
+  TAKE_PROFIT_GAP: 0.5, // Процент от наилучшей цены позиции (%)
+  TAKE_PROFIT_TRIGGER_PNL: 10, // Нереализованные pnl после которого будет установлен take profit (%)
 } as const;
 
 // Наблюдение за изменениями в кошельке
@@ -61,18 +60,21 @@ watchWallet({ afterFilled: () => {} });
 
 // Наблюдение за ордерами и установка таймеров для их очистки
 watchOrders({
-  afterFilled: (orders) => orders.forEach(setTimerClearOrder),
+  afterFilled: (orders) => {
+    orders.forEach(setTimerClearOrder);
+  },
 });
 
 // Наблюдение за позициями
-watchPositions({ afterFilled: () => {} });
+watchPositions({
+  afterFilled: (positions) => {},
+});
 
 // Периодическая проверка позиций и закрытие успешных
 watchPositionsInterval({
   afterFilled: (positions) => {
-    // TODO: Реализовать другой принцип закрытия успешной позиции
-    positionSuccessClose(positions);
     setSlidingStopOrder(positions);
+    setTakeProfit(positions);
   },
 });
 
@@ -82,7 +84,7 @@ fetchCoins().then(() => {
     setTickerToMatrix(ticker);
     stopPosition(ticker);
   });
-  // watchPrice(handlePriceEvent);
+  watchPrice(handlePriceEvent);
 });
 
 // Обработка событий изменения цен для обработки возможных покупок монет
@@ -162,40 +164,4 @@ const executeCoinPurchaseOrder = async (active: BuyCoinParams) => {
   }
 
   await createRecursiveOrder({ active, amounts, prices, index: 0 });
-};
-
-const stopPosition = async (ticker: Ticker) => {
-  const stopOrder = getStopOrderBySymbol(ticker?.symbol);
-  const currentPriceStr = ticker?.[SETTINGS.FIELD];
-
-  if (!stopOrder || typeof currentPriceStr !== "string") return;
-
-  if (stopOrder.loading) {
-    console.log(chalk.yellow("Идёт процесс закрытия позиции по стоп лоссу"));
-    return;
-  }
-
-  const currentPrice = parseFloat(currentPriceStr);
-
-  if (isNaN(currentPrice)) return;
-
-  const isTriggerConditionMet =
-    stopOrder.side === "Buy"
-      ? currentPrice <= stopOrder.stopPrice
-      : currentPrice >= stopOrder.stopPrice;
-
-  if (isTriggerConditionMet) {
-    stopOrder.loading = true;
-    const result = await closePosition(stopOrder);
-
-    if (result?.retMsg === "OK") {
-      console.log(
-        chalk.green(`Позиция: ${stopOrder.symbol} закрыто по стоп-лосу`)
-      );
-      removeSlidingStopOrder(stopOrder.symbol);
-    } else {
-      console.error(`Ошибка закрытия позиции по стоп-лосу: ${result?.retMsg}`);
-      stopOrder.loading = false;
-    }
-  }
 };
