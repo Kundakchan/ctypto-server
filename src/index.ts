@@ -1,4 +1,9 @@
-import { getOrders, hasOrder, setTimerClearOrder, watchOrders } from "./order";
+import {
+  cancelAllOrdersOfClosedPosition,
+  hasOrder,
+  setTimerClearOrder,
+  watchOrders,
+} from "./order";
 import {
   canBuyCoins,
   getAmount,
@@ -20,7 +25,6 @@ import {
 } from "./price";
 import chalk from "chalk";
 import {
-  cancelOrder,
   createRecursiveOrder,
   getAvailableSlots,
   setSlidingStopOrder,
@@ -32,6 +36,7 @@ import {
   hasPosition,
   watchPositions,
   setTimerForSuccessfulClosingPosition,
+  updateTimerForSuccessfulClosingPosition,
 } from "./position";
 
 export type Side = "Buy" | "Sell";
@@ -43,8 +48,8 @@ export interface BuyCoinParams extends Ticker {
 
 export const SETTINGS = {
   TIME_CHECK_PRICE: 1000, // Время обновления проверки цены на все монеты (мс)
-  LIMIT_ORDER_PRICE_VARIATION: 0.5, // Процент разницы между ценами (%)
-  TIMER_ORDER_CANCEL: 15, // Время отмены ордеров если он не выполнился (мин)
+  LIMIT_ORDER_PRICE_VARIATION: 0.1, // Процент разницы между ценами (%)
+  TIMER_ORDER_CANCEL: 5, // Время отмены ордеров если он не выполнился (мин)
   LEVERAGE: 10, // Торговое плечо (число)
   HISTORY_CHANGES_SIZE: 4, // Количество временных отрезков для отслеживания динамики изменения цены (шт)
   DYNAMICS_PRICE_CHANGES: 0.05, // Минимальный процент изменения цены относительно прошлого (%)
@@ -52,9 +57,11 @@ export const SETTINGS = {
   NUMBER_OF_POSITIONS: 3, // Количество закупаемых монет (шт)
   NUMBER_OF_ORDERS: 5, // Количество создаваемых ордеров для каждой монеты (шт)
   PRICE_DIFFERENCE_MULTIPLIER: 100, // На сколько процентов будет увеличен процент разницы между ценами (%)
-  STOP_LOSS: 1, // Процент от наилучшей цены позиции для установки стоп лосса после выполнения последнего ордера на закупку позиции
-  TAKE_PROFIT_GAP: 0.5, // Процент от наилучшей цены позиции (%)
-  TAKE_PROFIT_TRIGGER_PNL: 5, // Нереализованные pnl после которого будет установлен take profit (%)
+  STOP_LOSS: 0.5, // Процент от наилучшей цены позиции для установки стоп лосса после выполнения последнего ордера на закупку позиции
+  TAKE_PROFIT_GAP: 0.3, // Процент от наилучшей цены позиции (%)
+  TAKE_PROFIT_TRIGGER_PNL: 6, // Нереализованные pnl после которого будет установлен take profit (%)
+  SUCCESS_CLOSED_POSITION_PNL: 4, //
+  TIME_SUCCESS_CLOSED_POSITION: 5, //
 } as const;
 
 // Наблюдение за изменениями в кошельке
@@ -65,35 +72,8 @@ watchOrders({
   afterFilled: (orders) => {
     orders.forEach(setTimerClearOrder);
   },
-  beforeFilled: async (orderList) => {
-    // Проходим по каждому ордеру из списка ордеров
-    for (const order of orderList) {
-      // Пропускаем ордера, которые не имеют статус "Filled"
-      if (order.orderStatus !== "Filled") continue;
-
-      // Получаем данные для текущего ордера по его ID
-      const orderDetails = getOrders("orderId", order.orderId);
-
-      // Проходим по каждому элементу в полученных данных
-      for (const orderDetail of orderDetails) {
-        // Пропускаем элементы, если их статус не "cancel"
-        if (orderDetail.status !== "cancel") continue;
-
-        // Получаем список всех открытых ордеров для данного символа
-        const openOrdersForSymbol = getOrders("symbol", order.symbol);
-
-        console.log("openOrdersForSymbol", openOrdersForSymbol);
-
-        // Проходим по каждому открытому ордеру и асинхронно отменяем его
-        for (const openOrder of openOrdersForSymbol) {
-          // Асинхронно отменяем ордер
-          await cancelOrder({
-            symbol: openOrder.symbol, // Символ текущего открытого ордера
-            orderId: openOrder.orderId as string, // ID текущего открытого ордера
-          });
-        }
-      }
-    }
+  beforeFilled: (orders) => {
+    cancelAllOrdersOfClosedPosition(orders);
   },
 });
 
@@ -108,6 +88,7 @@ watchPositionsInterval({
     setSlidingStopOrder(positions);
     setTakeProfit(positions);
     setTimerForSuccessfulClosingPosition(positions);
+    updateTimerForSuccessfulClosingPosition(positions);
   },
 });
 

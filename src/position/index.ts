@@ -5,8 +5,7 @@ import chalk from "chalk";
 import { SETTINGS } from "..";
 import { createOrder, getStopOrderBySymbol } from "../trading";
 import { calculateMarkupPrice } from "../utils";
-import { addCreatedOrderStatus } from "../order";
-import { getCoinPriceBySymbol } from "../price";
+import { addCreatedOrderStatus, getOrders } from "../order";
 
 export interface Position extends PositionV5 {
   symbol: Symbol;
@@ -122,8 +121,13 @@ const setTimerForSuccessfulClosingPosition = (positions: Position[]) => {
       if (getStopOrderBySymbol(position.symbol)) return;
 
       setOrderForSuccessfulClosingPosition(position);
-    }, 1 * 60000); // TODO: Вынести время в константу
+    }, SETTINGS.TIME_SUCCESS_CLOSED_POSITION * 60000);
   });
+};
+
+const removeTimerForSuccessfulClosingPosition = (symbol: Symbol) => {
+  clearTimeout(timerForSuccessfulClosingPosition[symbol]);
+  delete timerForSuccessfulClosingPosition[symbol];
 };
 
 const setOrderForSuccessfulClosingPosition = async (position: Position) => {
@@ -131,7 +135,7 @@ const setOrderForSuccessfulClosingPosition = async (position: Position) => {
     avgPrice: parseFloat(position.avgPrice),
     leverage: parseFloat(position.leverage ?? SETTINGS.LEVERAGE.toString()),
     side: position.side,
-    pnl: 2, // TODO: Вынести pnl в константу
+    pnl: SETTINGS.SUCCESS_CLOSED_POSITION_PNL,
   });
 
   const result = await createOrder({
@@ -165,7 +169,62 @@ const setOrderForSuccessfulClosingPosition = async (position: Position) => {
   });
 };
 
+const updateTimerForSuccessfulClosingPosition = async (
+  positions: Position[]
+) => {
+  for (const position of positions) {
+    const order = getOrders("symbol", position.symbol).find(
+      (item) => item.status === "cancel"
+    );
+
+    if (!order?.price) continue;
+
+    const price = calculateMarkupPrice({
+      avgPrice: parseFloat(position.avgPrice),
+      leverage: parseFloat(position.leverage ?? SETTINGS.LEVERAGE.toString()),
+      side: position.side,
+      pnl: SETTINGS.SUCCESS_CLOSED_POSITION_PNL,
+    });
+
+    // const test =
+    //   order.side === "Buy"
+    //     ? price < parseFloat(order.price)
+    //     : price > parseFloat(order.price);
+
+    // if (test) continue;
+
+    // console.log(price, parseFloat(order.price));
+
+    const result = await client.amendOrder({
+      category: "linear",
+      symbol: position.symbol,
+      orderId: order.orderId,
+      qty: position.size,
+      price: price.toString(),
+    });
+
+    if (!result || result.retMsg !== "OK") {
+      // console.error(
+      //   chalk.red(
+      //     `Ошибка обновления ордера на закрытия позиции ${position.symbol}: ${
+      //       result?.retMsg || "Неизвестная ошибка"
+      //     }`
+      //   )
+      // );
+      continue;
+    }
+
+    console.log(
+      chalk.green(
+        `Ордер на закрытия позиции ${position.symbol} успешно обновлён`
+      )
+    );
+  }
+};
+
 export {
+  removeTimerForSuccessfulClosingPosition,
+  updateTimerForSuccessfulClosingPosition,
   setTimerForSuccessfulClosingPosition,
   watchPositions,
   hasPosition,

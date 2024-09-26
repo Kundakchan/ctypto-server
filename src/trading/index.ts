@@ -6,6 +6,7 @@ import {
   getPositionSymbol,
   isPositionPnL,
   Position,
+  removeTimerForSuccessfulClosingPosition,
 } from "../position";
 import { addCreatedOrderStatus, getOrders, getOrdersSymbol } from "../order";
 import chalk from "chalk";
@@ -365,6 +366,8 @@ const stopPosition = async (ticker: Ticker) => {
         orderId: order.orderId as string,
       });
     }
+
+    removeTimerForSuccessfulClosingPosition(stopOrder.symbol);
 
     if (result?.retMsg === "OK") {
       console.log(

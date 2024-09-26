@@ -1,7 +1,10 @@
 import type { AccountOrderV5, OrderStatusV5 } from "bybit-api";
 import { ws, setHandlerWS } from "../client";
 import type { Symbol } from "../coins/symbols";
-import { hasPosition } from "../position";
+import {
+  hasPosition,
+  removeTimerForSuccessfulClosingPosition,
+} from "../position";
 import chalk from "chalk";
 import { SETTINGS } from "..";
 import { cancelOrder } from "../trading";
@@ -126,7 +129,39 @@ const addCreatedOrderStatus = ({
   orders.push({ orderId: id, symbol, status });
 };
 
+const cancelAllOrdersOfClosedPosition = async (orderList: Order[]) => {
+  // Проходим по каждому ордеру из списка ордеров
+  for (const order of orderList) {
+    // Пропускаем ордера, которые не имеют статус "Filled"
+    if (order.orderStatus !== "Filled") continue;
+
+    // Получаем данные для текущего ордера по его ID
+    const orderDetails = getOrders("orderId", order.orderId);
+
+    // Проходим по каждому элементу в полученных данных
+    for (const orderDetail of orderDetails) {
+      // Пропускаем элементы, если их статус не "cancel"
+      if (orderDetail.status !== "cancel") continue;
+
+      // Получаем список всех открытых ордеров для данного символа
+      const openOrdersForSymbol = getOrders("symbol", order.symbol);
+
+      // Проходим по каждому открытому ордеру и асинхронно отменяем его
+      for (const openOrder of openOrdersForSymbol) {
+        // Асинхронно отменяем ордер
+        await cancelOrder({
+          symbol: openOrder.symbol, // Символ текущего открытого ордера
+          orderId: openOrder.orderId as string, // ID текущего открытого ордера
+        });
+      }
+    }
+
+    removeTimerForSuccessfulClosingPosition(order.symbol);
+  }
+};
+
 export {
+  cancelAllOrdersOfClosedPosition,
   addCreatedOrderStatus,
   watchOrders,
   hasOrder,
