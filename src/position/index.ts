@@ -118,6 +118,12 @@ const setTimerForSuccessfulClosingPosition = (positions: Position[]) => {
   positions.forEach((position) => {
     if (timerForSuccessfulClosingPosition[position.symbol]) return;
 
+    const order = getOrders("symbol", position.symbol).find(
+      (item) => item.status === "cancel"
+    );
+
+    if (order) return;
+
     removeTimerForSuccessfulClosingPosition(position.symbol);
     timerForSuccessfulClosingPosition[position.symbol] = setTimeout(
       async () => {
@@ -184,7 +190,7 @@ const updateTimerForSuccessfulClosingPosition = async (
       (item) => item.status === "cancel"
     );
 
-    if (!order?.price) continue;
+    if (!order?.price || !order?.qty) continue;
 
     const price = calculateMarkupPrice({
       avgPrice: parseFloat(position.avgPrice),
@@ -193,14 +199,7 @@ const updateTimerForSuccessfulClosingPosition = async (
       pnl: SETTINGS.SUCCESS_CLOSED_POSITION_PNL,
     });
 
-    // const test =
-    //   order.side === "Buy"
-    //     ? price < parseFloat(order.price)
-    //     : price > parseFloat(order.price);
-
-    // if (test) continue;
-
-    // console.log(price, parseFloat(order.price));
+    if (parseFloat(order.qty) === parseFloat(position.size)) continue;
 
     const result = await client.amendOrder({
       category: "linear",
@@ -211,13 +210,13 @@ const updateTimerForSuccessfulClosingPosition = async (
     });
 
     if (!result || result.retMsg !== "OK") {
-      // console.error(
-      //   chalk.red(
-      //     `Ошибка обновления ордера на закрытия позиции ${position.symbol}: ${
-      //       result?.retMsg || "Неизвестная ошибка"
-      //     }`
-      //   )
-      // );
+      console.error(
+        chalk.red(
+          `Ошибка обновления ордера на закрытия позиции ${position.symbol}: ${
+            result?.retMsg || "Неизвестная ошибка"
+          }`
+        )
+      );
       continue;
     }
 
