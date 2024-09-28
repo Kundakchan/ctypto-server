@@ -138,6 +138,7 @@ const cancelAllOrdersOfClosedPosition = async (orderList: Order[]) => {
     // Получаем данные для текущего ордера по его ID
     const orderDetails = getOrders("orderId", order.orderId);
 
+    removeTimerForSuccessfulClosingPosition(order.symbol);
     // Проходим по каждому элементу в полученных данных
     for (const orderDetail of orderDetails) {
       // Пропускаем элементы, если их статус не "cancel"
@@ -155,8 +156,6 @@ const cancelAllOrdersOfClosedPosition = async (orderList: Order[]) => {
         });
       }
     }
-
-    removeTimerForSuccessfulClosingPosition(order.symbol);
   }
 };
 

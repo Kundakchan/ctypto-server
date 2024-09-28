@@ -9,6 +9,7 @@ import { addCreatedOrderStatus, getOrders } from "../order";
 
 export interface Position extends PositionV5 {
   symbol: Symbol;
+  loading: boolean;
 }
 let positions: Position[] = [];
 
@@ -117,11 +118,17 @@ const setTimerForSuccessfulClosingPosition = (positions: Position[]) => {
   positions.forEach((position) => {
     if (timerForSuccessfulClosingPosition[position.symbol]) return;
 
-    timerForSuccessfulClosingPosition[position.symbol] = setTimeout(() => {
-      if (getStopOrderBySymbol(position.symbol)) return;
-
-      setOrderForSuccessfulClosingPosition(position);
-    }, SETTINGS.TIME_SUCCESS_CLOSED_POSITION * 60000);
+    removeTimerForSuccessfulClosingPosition(position.symbol);
+    timerForSuccessfulClosingPosition[position.symbol] = setTimeout(
+      async () => {
+        if (getStopOrderBySymbol(position.symbol)) return;
+        if (position.loading) return;
+        position.loading = true;
+        await setOrderForSuccessfulClosingPosition(position);
+        position.loading = false;
+      },
+      SETTINGS.TIME_SUCCESS_CLOSED_POSITION * 60000
+    );
   });
 };
 

@@ -151,6 +151,7 @@ export const createRecursiveOrder = async ({
       side: active.position,
       amount: amounts[index],
       price: prices[index],
+      timeInForce: "GTC",
     });
 
     // Проверяем результат
@@ -360,14 +361,13 @@ const stopPosition = async (ticker: Ticker) => {
 
     const orders = getOrders("symbol", stopOrder.symbol);
 
+    removeTimerForSuccessfulClosingPosition(stopOrder.symbol);
     for (const order of orders) {
       await cancelOrder({
         symbol: order.symbol,
         orderId: order.orderId as string,
       });
     }
-
-    removeTimerForSuccessfulClosingPosition(stopOrder.symbol);
 
     if (result?.retMsg === "OK") {
       console.log(
