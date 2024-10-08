@@ -54,7 +54,7 @@ const getCoinPurchaseBalance = () => {
   const wallet = getWallet();
   const availableSlots = getAvailableSlots();
   if (wallet?.totalAvailableBalance && availableSlots > 0) {
-    return parseFloat(wallet.totalAvailableBalance) / availableSlots;
+    return parseFloat(wallet.totalAvailableBalance) / 2 / availableSlots;
   } else if (availableSlots <= 0) {
     return 0;
   } else {

@@ -14,7 +14,7 @@ export interface Order extends Partial<AccountOrderV5> {
   status: "open" | "cancel";
 }
 interface ActionOrder {
-  (params: Order): void;
+  (params: Partial<Order>): void;
 }
 interface GetOrders {
   (field: keyof Order, value: Order[keyof Order]): Order[];
@@ -58,7 +58,7 @@ function watchOrders(params: WatchOrdersParams) {
 const setOrder: ActionOrder = (params) => {
   const index = orders.findIndex((order) => order.orderId === params.orderId);
   if (index === -1) {
-    orders.push(params);
+    orders.push(params as Order);
   } else {
     orders[index] = { ...orders[index], ...params };
   }
@@ -167,4 +167,5 @@ export {
   setTimerClearOrder,
   getOrders,
   getOrdersSymbol,
+  removeOrder,
 };

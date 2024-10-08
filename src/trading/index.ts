@@ -8,7 +8,12 @@ import {
   Position,
   removeTimerForSuccessfulClosingPosition,
 } from "../position";
-import { addCreatedOrderStatus, getOrders, getOrdersSymbol } from "../order";
+import {
+  addCreatedOrderStatus,
+  getOrders,
+  getOrdersSymbol,
+  removeOrder,
+} from "../order";
 import chalk from "chalk";
 import { getCoinPriceBySymbol } from "../price";
 import { calculatePercentage } from "../utils";
@@ -69,8 +74,21 @@ export const cancelOrder = async ({
       symbol: symbol,
       orderId: orderId,
     });
-    console.warn("Ордер отменён");
-    console.table(result);
+
+    if (result?.retMsg === "OK") {
+      console.log(chalk.green(`Ордер: ${symbol} успешно отменён.`));
+    } else if (result.retCode === 110001) {
+      console.log(
+        chalk.green(
+          `Ордер: ${symbol} не существует или его слишком поздно отменили.`
+        )
+      );
+    } else {
+      console.log(chalk.red(`Ошибка отмены ордера: ${symbol}`));
+      console.table(result);
+    }
+    removeOrder({ orderId: orderId });
+
     return result;
   } catch (error) {
     console.error(error);
@@ -127,6 +145,8 @@ export const getAvailableSlots = () => {
   return SETTINGS.NUMBER_OF_POSITIONS - positionAndOrders.length;
 };
 
+const creatingOrders = new Set<Symbol>();
+
 export const createRecursiveOrder = async ({
   active,
   amounts,
@@ -141,8 +161,11 @@ export const createRecursiveOrder = async ({
   // Завершаем рекурсию, если достигнуто максимальное количество ордеров
   if (index >= SETTINGS.NUMBER_OF_ORDERS) {
     console.log(chalk.green(`Все ордера ${active.symbol} успешно созданы`));
+    creatingOrders.delete(active.symbol);
     return;
   }
+
+  creatingOrders.add(active.symbol);
 
   try {
     // Создаём ордер
@@ -189,6 +212,15 @@ export const createRecursiveOrder = async ({
 const setSlidingStopOrder = async (positions: Position[]) => {
   // Проходим по каждой позиции
   positions.forEach((position) => {
+    if (creatingOrders.has(position.symbol)) {
+      console.log(
+        chalk.yellow(
+          `Стоп лосс не может быть назначен так Как идёт процесс создания ордера: ${position.symbol}`
+        )
+      );
+      return;
+    }
+
     // Проверяем, есть ли активные ордера по символу и стороне (Buy/Sell)
     const existingOrders = getOrders("symbol", position.symbol).some(
       (order) => order.side === position.side
@@ -256,6 +288,15 @@ const setTakeProfit = async (positions: Position[]) => {
   positions.forEach((position) => {
     // Проверяем, достиг ли PnL значения, чтобы сработал триггер тейк-профита
     if (!isPositionPnL(position, SETTINGS.TAKE_PROFIT_TRIGGER_PNL)) return;
+
+    if (creatingOrders.has(position.symbol)) {
+      console.log(
+        chalk.yellow(
+          `Take profit не может быть назначен так как идёт процесс создания ордера: ${position.symbol}`
+        )
+      );
+      return;
+    }
 
     // Получаем текущую цену актива по символу
     const currentPrice = parseFloat(
@@ -382,6 +423,7 @@ const stopPosition = async (ticker: Ticker) => {
 };
 
 export {
+  creatingOrders,
   updateOrder,
   setSlidingStopOrder,
   getStopOrderBySymbol,

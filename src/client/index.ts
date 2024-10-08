@@ -1,8 +1,8 @@
 import * as dotenv from "dotenv";
 dotenv.config();
 
-const API_KEY = process.env.DEMO_API_KEY;
-const API_SECRET = process.env.DEMO_API_SECRET;
+const API_KEY = process.env.API_KEY;
+const API_SECRET = process.env.API_SECRET;
 
 const { RestClientV5, WebsocketClient } = require("bybit-api");
 
@@ -32,14 +32,14 @@ interface SetHandlerWSParams {
 const client: RestClientV5Type = new RestClientV5({
   key: API_KEY,
   secret: API_SECRET,
-  demoTrading: true,
+  demoTrading: false,
 });
 
 const ws: WebsocketClientType = new WebsocketClient({
   key: API_KEY,
   secret: API_SECRET,
   testnet: false,
-  demoTrading: true,
+  demoTrading: false,
   market: "v5",
 });
 

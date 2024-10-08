@@ -1,5 +1,6 @@
 import {
   cancelAllOrdersOfClosedPosition,
+  getOrdersSymbol,
   hasOrder,
   setTimerClearOrder,
   watchOrders,
@@ -37,6 +38,7 @@ import {
   watchPositions,
   setTimerForSuccessfulClosingPosition,
   updateTimerForSuccessfulClosingPosition,
+  getPositionSymbol,
 } from "./position";
 
 export type Side = "Buy" | "Sell";
@@ -48,20 +50,20 @@ export interface BuyCoinParams extends Ticker {
 
 export const SETTINGS = {
   TIME_CHECK_PRICE: 1000, // Время обновления проверки цены на все монеты (мс)
-  LIMIT_ORDER_PRICE_VARIATION: 0.1, // Процент разницы между ценами (%)
+  LIMIT_ORDER_PRICE_VARIATION: 0.5, // Процент разницы между ценами (%)
   TIMER_ORDER_CANCEL: 1, // Время отмены ордеров если он не выполнился (мин)
   LEVERAGE: 10, // Торговое плечо (число)
-  HISTORY_CHANGES_SIZE: 4, // Количество временных отрезков для отслеживания динамики изменения цены (шт)
+  HISTORY_CHANGES_SIZE: 5, // Количество временных отрезков для отслеживания динамики изменения цены (шт)
   DYNAMICS_PRICE_CHANGES: 0.05, // Минимальный процент изменения цены относительно прошлого (%)
   FIELD: "lastPrice", // Поле, содержащее цену монеты
   NUMBER_OF_POSITIONS: 1, // Количество закупаемых монет (шт)
   NUMBER_OF_ORDERS: 5, // Количество создаваемых ордеров для каждой монеты (шт)
-  PRICE_DIFFERENCE_MULTIPLIER: 200, // На сколько процентов будет увеличен процент разницы между ценами (%)
-  STOP_LOSS: 0.5, // Процент от наилучшей цены позиции для установки стоп лосса после выполнения последнего ордера на закупку позиции
+  PRICE_DIFFERENCE_MULTIPLIER: 250, // На сколько процентов будет увеличен процент разницы между ценами (%)
+  STOP_LOSS: 1, // Процент от наилучшей цены позиции для установки стоп лосса после выполнения последнего ордера на закупку позиции
   TAKE_PROFIT_GAP: 0.3, // Процент от наилучшей цены позиции (%)
   TAKE_PROFIT_TRIGGER_PNL: 6, // Нереализованные pnl после которого будет установлен take profit (%)
   SUCCESS_CLOSED_POSITION_PNL: 4, //
-  TIME_SUCCESS_CLOSED_POSITION: 1, //
+  TIME_SUCCESS_CLOSED_POSITION: 10, //
 } as const;
 
 // Наблюдение за изменениями в кошельке
@@ -87,6 +89,7 @@ watchPositionsInterval({
   afterFilled: (positions) => {
     setSlidingStopOrder(positions);
     setTakeProfit(positions);
+
     setTimerForSuccessfulClosingPosition(positions);
     updateTimerForSuccessfulClosingPosition(positions);
   },
@@ -111,8 +114,11 @@ const handlePriceEvent = async (event: any) => {
   }
 
   for (const [index, coin] of bestCoins.entries()) {
-    console.log(getAvailableSlots());
     if (getAvailableSlots() <= index) {
+      console.log({
+        positions: getPositionSymbol(),
+        orders: getOrdersSymbol(),
+      });
       console.log(chalk.yellow("Лимит на покупку монет превышен"), coin.symbol);
       continue;
     }
