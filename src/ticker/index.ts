@@ -3,6 +3,7 @@ import type { Symbol } from "../coins/symbols";
 import { getCoinsKey } from "../coins";
 
 import type { TickerLinearInverseV5 } from "bybit-api";
+
 export interface Ticker extends Partial<TickerLinearInverseV5> {
   symbol: Symbol;
 }
@@ -23,6 +24,8 @@ const getWSParams = () => {
 
 ws.onopen = () => {
   console.warn("Соединение ws tickers открыто!");
+  ws.send(getWSParams());
+  // Send subscription parameters once the connection is open
 };
 
 ws.onclose = () => {
@@ -36,6 +39,7 @@ ws.onerror = (error: any) => {
 interface WatchTickerAfterUpdate {
   (params: Ticker): void;
 }
+
 interface WatchTicker {
   (params: WatchTickerAfterUpdate): void;
 }
@@ -45,8 +49,7 @@ const watchTicker: WatchTicker = (afterUpdate) => {
     const data = JSON.parse(event.data).data as Ticker;
     afterUpdate(data);
   };
-
-  ws.send(getWSParams());
 };
 
+// Export the watchTicker function
 export { watchTicker };

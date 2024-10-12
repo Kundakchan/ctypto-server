@@ -63,7 +63,7 @@ export const SETTINGS = {
   TAKE_PROFIT_GAP: 0.3, // Процент от наилучшей цены позиции (%)
   TAKE_PROFIT_TRIGGER_PNL: 6, // Нереализованные pnl после которого будет установлен take profit (%)
   SUCCESS_CLOSED_POSITION_PNL: 4, //
-  TIME_SUCCESS_CLOSED_POSITION: 10, //
+  TIME_SUCCESS_CLOSED_POSITION: 0, //
 } as const;
 
 // Наблюдение за изменениями в кошельке
