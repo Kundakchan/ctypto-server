@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "main": "index.ts",
   "scripts": {
-    "start": "tsx src/index.ts"
+    "start:dev": "NODE_ENV=development tsx -r dotenv/config src/index.ts dotenv_config_path=.env.dev",
+    "start:prod": "NODE_ENV=production tsx -r dotenv/config src/index.ts dotenv_config_path=.env.prod"
   },
   "author": "",
   "license": "ISC",

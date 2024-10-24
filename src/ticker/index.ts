@@ -1,4 +1,3 @@
-const ws = new WebSocket("wss://stream.bybit.com/v5/public/linear");
 import type { Symbol } from "../coins/symbols";
 import { getCoinsKey } from "../coins";
 
@@ -22,20 +21,6 @@ const getWSParams = () => {
   }
 };
 
-ws.onopen = () => {
-  console.warn("Соединение ws tickers открыто!");
-  ws.send(getWSParams());
-  // Send subscription parameters once the connection is open
-};
-
-ws.onclose = () => {
-  console.error("Соединение ws tickers закрыто!");
-};
-
-ws.onerror = (error: any) => {
-  console.error("Ошибка Соединение ws tickers ", error);
-};
-
 interface WatchTickerAfterUpdate {
   (params: Ticker): void;
 }
@@ -45,11 +30,31 @@ interface WatchTicker {
 }
 
 const watchTicker: WatchTicker = (afterUpdate) => {
+  if (!process.env.API_PUBLIC_WEBSOCKET) {
+    throw new Error(
+      `Некорректный адрес веб-сокета: ${process.env.API_PUBLIC_WEBSOCKET}`
+    );
+  }
+
+  const ws = new WebSocket(process.env.API_PUBLIC_WEBSOCKET);
+
+  ws.onopen = () => {
+    console.warn("Соединение ws tickers открыто!");
+    ws.send(getWSParams());
+  };
+
+  ws.onclose = () => {
+    console.error("Соединение ws tickers закрыто!");
+  };
+
+  ws.onerror = (error: any) => {
+    console.error("Ошибка Соединение ws tickers ", error);
+  };
+
   ws.onmessage = (event: any) => {
     const data = JSON.parse(event.data).data as Ticker;
     afterUpdate(data);
   };
 };
 
-// Export the watchTicker function
 export { watchTicker };

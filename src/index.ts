@@ -62,7 +62,7 @@ export const SETTINGS = {
   STOP_LOSS: 1, // Процент от наилучшей цены позиции для установки стоп лосса после выполнения последнего ордера на закупку позиции
   TAKE_PROFIT_GAP: 0.3, // Процент от наилучшей цены позиции (%)
   TAKE_PROFIT_TRIGGER_PNL: 6, // Нереализованные pnl после которого будет установлен take profit (%)
-  SUCCESS_CLOSED_POSITION_PNL: 4, //
+  SUCCESS_CLOSED_POSITION_PNL: 6, //
   TIME_SUCCESS_CLOSED_POSITION: 0, //
 } as const;
 
